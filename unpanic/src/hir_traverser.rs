@@ -19,7 +19,7 @@ use crate::rustc_arg_handlers::*;
 pub struct HirTraverser {
     pub errors: Vec<String>,
     pub function_to_check:
-        HashMap</* krate name */ String, /* function path */ Vec<DefId>>,
+        HashMap</* krate name */ String, /* function path, call stack */ Vec<(DefId,Vec<String>)>>,
     pub target_args: Vec<String>,
     pub dep_map: HashMap<
         /* krate name */ String,
@@ -49,7 +49,7 @@ impl HirTraverser {
         }
     }
 
-    fn check_crate(&mut self, target_config: Config, function_to_check: Option<Vec<DefId>>) {
+    fn check_crate(&mut self, target_config: Config, function_to_check: Option<Vec<(DefId,Vec<String>)>>) {
         rustc_interface::run_compiler(target_config, |compiler| {
             compiler.enter(|queries| {
                 queries.global_ctxt().unwrap().enter(|mut tcx| {
@@ -59,13 +59,16 @@ impl HirTraverser {
                     let ids = function_to_check
                         .map(|ids| get_function_for_dependency(&mut tcx.hir(), ids))
                         .unwrap_or(get_functions(&mut tcx.hir()));
-                    for block in &ids {
-                        let block = block.1[0];
+                    for elem in &ids {
+                        let blocks = &elem.1.0;
+                        let block = blocks[0];
+                        let mut call_stack = elem.1.1.clone();
                         get_panic_in_block(
                             &mut tcx.hir(),
                             block,
                             &mut self.function_to_check,
                             &mut tcx,
+                            &mut call_stack,
                         );
                     }
                 })
@@ -75,12 +78,18 @@ impl HirTraverser {
 }
 fn get_function_for_dependency<'tcx>(
     hir_krate: &mut Map<'tcx>,
-    ids: Vec<DefId>,
-) -> Vec<(BodyId, Vec<&'tcx Block<'tcx>>)> {
+    ids: Vec<(DefId,Vec<String>)>,
+) -> Vec<(
+        BodyId, 
+        (Vec<&'tcx Block<'tcx>>,Vec<String>)
+        )> {
     let mut ret = vec![];
     for mut id in ids {
+        let stack = id.1;
+        let mut id = id.0;
         id.krate = LOCAL_CRATE;
-        let fn_body_id = match hir_krate.get_if_local(id).expect("ERROR MESSAGE") {
+        let item = hir_krate.get_if_local(id).expect("ERROR MESSAGE");
+        let fn_body_id = match item {
             Node::Item(item) => item.expect_fn().2,
             Node::ImplItem(item) => item.expect_fn().1,
             _ => todo!(),
@@ -91,10 +100,10 @@ fn get_function_for_dependency<'tcx>(
                     println!("ATTENTION ALLOW PANIC IN A DEPENDENCY");
                     continue;
                 } else {
-                    ret.push((fn_body_id, vec![block]));
+                    ret.push((fn_body_id, (vec![block], stack)));
                 }
             }
-            ExprKind::Block(block, None) => ret.push((fn_body_id, vec![block])),
+            ExprKind::Block(block, None) => ret.push((fn_body_id, (vec![block], stack))),
             _ => todo!(),
         }
     }
@@ -102,7 +111,7 @@ fn get_function_for_dependency<'tcx>(
 }
 
 /// Traverse the crate and return all the functions that contains `deny_panic blocks and the blocks
-fn get_functions<'tcx>(hir_krate: &mut Map<'tcx>) -> Vec<(BodyId, Vec<&'tcx Block<'tcx>>)> {
+fn get_functions<'tcx>(hir_krate: &mut Map<'tcx>) -> Vec<(BodyId, (Vec<&'tcx Block<'tcx>>,Vec<String>))> {
     let mut ret = vec![];
     for item_id in hir_krate.items() {
         let item = hir_krate.item(item_id);
@@ -111,7 +120,7 @@ fn get_functions<'tcx>(hir_krate: &mut Map<'tcx>) -> Vec<(BodyId, Vec<&'tcx Bloc
             let expr = hir_krate.body(body_id).value;
             get_deny_panic_in_expr(expr, &mut deny_panic_blocks);
             if !deny_panic_blocks.is_empty() {
-                ret.push((body_id, deny_panic_blocks));
+                ret.push((body_id, (deny_panic_blocks,vec![item.ident.to_string()])));
             }
         }
     }
@@ -160,8 +169,9 @@ fn get_deny_panic_in_expr<'tcx>(expr: &Expr<'tcx>, blocks: &mut Vec<&Block<'tcx>
 fn handle_qpath<'tcx>(
     hir_krate: &mut Map<'tcx>,
     qpath: QPath,
-    acc: &mut HashMap<String, Vec<DefId>>,
+    acc: &mut HashMap<String, Vec<(DefId,Vec<String>)>>,
     tcx: &mut TyCtxt<'tcx>,
+    call_stack: &mut Vec<String>,
 ) {
     match qpath {
         QPath::Resolved(_, path) => {
@@ -169,7 +179,7 @@ fn handle_qpath<'tcx>(
                 match last.res {
                     Res::Def(def_kind, def_id) => {
                         let fn_ident = last.ident.as_str().to_string();
-                        handle_solved_path(hir_krate, def_kind, def_id, fn_ident, acc, tcx, &qpath);
+                        handle_solved_path(hir_krate, def_kind, def_id, fn_ident, acc, tcx, &qpath,call_stack);
                     }
                     _ => todo!(),
                 }
@@ -192,6 +202,7 @@ fn handle_qpath<'tcx>(
                         acc,
                         tcx,
                         &qpath,
+                        call_stack
                     );
                 }
                 _ => todo!(),
@@ -207,31 +218,32 @@ fn handle_solved_path<'tcx>(
     def_kind: DefKind,
     def_id: DefId,
     fn_ident: String,
-    acc: &mut HashMap<String, Vec<DefId>>,
+    acc: &mut HashMap<String, Vec<(DefId,Vec<String>)>>,
     tcx: &mut TyCtxt<'tcx>,
-    _qpath: &QPath,
+    qpath: &QPath,
+    call_stack: &mut Vec<String>,
 ) {
-    // TODO this should happen only if we are on std
-    //if fn_ident.contains("panic") {
-    //    println!("OMG A PANIC {:?}", fn_ident);
-    //};
+    call_stack.push(fn_ident.clone());
     match def_kind {
         DefKind::Fn => {
             if let Some(local_id) = def_id.as_local() {
                 let item = hir_krate.expect_item(local_id);
                 if let rustc_hir::ItemKind::Fn(_, _, body_id) = item.kind {
                     let expr = hir_krate.body(body_id).value;
-                    get_panic_in_expr(hir_krate, expr, acc, tcx);
+                    get_panic_in_expr(hir_krate, expr, acc, tcx,call_stack);
                 }
             } else {
                 let krate_name = tcx.crate_name(def_id.krate);
                 if let Some(functions) = acc.get_mut(&krate_name.to_string()) {
-                    functions.push(def_id);
+                    functions.push((def_id,call_stack.clone()));
                 } else {
                     if krate_name.to_string() == "std" && fn_ident == "begin_panic" {
-                        println!("OMG A PANIC {:?}", fn_ident);
+                        println!("OMG A PANIC");
+                        for funtion in call_stack.clone() {
+                            println!("{}", funtion);
+                        }
                     }
-                    acc.insert(krate_name.to_string(), vec![def_id]);
+                    acc.insert(krate_name.to_string(), vec![(def_id, call_stack.clone())]);
                 }
             }
         }
@@ -240,14 +252,14 @@ fn handle_solved_path<'tcx>(
                 let item = hir_krate.expect_impl_item(local_id);
                 if let rustc_hir::ImplItemKind::Fn(_, body_id) = item.kind {
                     let expr = hir_krate.body(body_id).value;
-                    get_panic_in_expr(hir_krate, expr, acc, tcx);
+                    get_panic_in_expr(hir_krate, expr, acc, tcx,call_stack);
                 }
             } else {
                 let krate_name = tcx.crate_name(def_id.krate);
                 if let Some(functions) = acc.get_mut(&krate_name.to_string()) {
-                    functions.push(def_id);
+                    functions.push((def_id,call_stack.clone()));
                 } else {
-                    acc.insert(krate_name.to_string(), vec![def_id]);
+                    acc.insert(krate_name.to_string(), vec![(def_id,call_stack.clone())]);
                 }
             }
         }
@@ -259,154 +271,156 @@ fn handle_solved_path<'tcx>(
 fn get_panic_in_block<'tcx>(
     hir_krate: &mut Map<'tcx>,
     block: &Block<'tcx>,
-    acc: &mut HashMap<String, Vec<DefId>>,
+    acc: &mut HashMap<String, Vec<(DefId,Vec<String>)>>,
     tcx: &mut TyCtxt<'tcx>,
+    call_stack: &mut Vec<String>
 ) {
     for stmt in block.stmts {
-        get_panic_in_stmt(hir_krate, &stmt.kind, acc, tcx);
+        get_panic_in_stmt(hir_krate, &stmt.kind, acc, tcx,call_stack);
     }
     if let Some(expr) = block.expr {
-        get_panic_in_expr(hir_krate, expr, acc, tcx);
+        get_panic_in_expr(hir_krate, expr, acc, tcx,call_stack);
     }
 }
 
 fn get_panic_in_expr<'tcx>(
     hir_krate: &mut Map<'tcx>,
     expr_: &Expr<'tcx>,
-    acc: &mut HashMap<String, Vec<DefId>>,
+    acc: &mut HashMap<String, Vec<(DefId,Vec<String>)>>,
     tcx: &mut TyCtxt<'tcx>,
+    call_stack: &mut Vec<String>,
 ) {
     match expr_.kind {
         ExprKind::ConstBlock(const_block) => {
             let expr = hir_krate.body(const_block.body).value;
-            get_panic_in_expr(hir_krate, expr, acc, tcx);
+            get_panic_in_expr(hir_krate, expr, acc, tcx,call_stack);
         }
         ExprKind::Array(array) => {
             for expr in array {
-                get_panic_in_expr(hir_krate, expr, acc, tcx);
+                get_panic_in_expr(hir_krate, expr, acc, tcx,call_stack);
             }
         }
         ExprKind::Call(call, args) => {
-            get_panic_in_expr(hir_krate, call, acc, tcx);
+            get_panic_in_expr(hir_krate, call, acc, tcx,call_stack);
             for expr in args {
-                get_panic_in_expr(hir_krate, expr, acc, tcx);
+                get_panic_in_expr(hir_krate, expr, acc, tcx,call_stack);
             }
         }
         ExprKind::MethodCall(_, call, args, _) => {
             // TODO check if works
-            get_panic_in_expr(hir_krate, call, acc, tcx);
+            get_panic_in_expr(hir_krate, call, acc, tcx,call_stack);
             for expr in args {
-                get_panic_in_expr(hir_krate, expr, acc, tcx);
+                get_panic_in_expr(hir_krate, expr, acc, tcx,call_stack);
             }
         }
         ExprKind::Tup(tup) => {
             for expr in tup {
-                get_panic_in_expr(hir_krate, expr, acc, tcx);
+                get_panic_in_expr(hir_krate, expr, acc, tcx,call_stack);
             }
         }
         // TODO check if BinOp can panic
         ExprKind::Binary(_, arg1, arg2) => {
-            get_panic_in_expr(hir_krate, arg1, acc, tcx);
-            get_panic_in_expr(hir_krate, arg2, acc, tcx);
+            get_panic_in_expr(hir_krate, arg1, acc, tcx,call_stack);
+            get_panic_in_expr(hir_krate, arg2, acc, tcx,call_stack);
         }
         // TODO check if UnOp can panic
         ExprKind::Unary(_, arg) => {
-            get_panic_in_expr(hir_krate, arg, acc, tcx);
+            get_panic_in_expr(hir_krate, arg, acc, tcx,call_stack);
         }
         ExprKind::Lit(_) => (),
-        ExprKind::Cast(expr, _) => get_panic_in_expr(hir_krate, expr, acc, tcx),
+        ExprKind::Cast(expr, _) => get_panic_in_expr(hir_krate, expr, acc, tcx,call_stack),
         ExprKind::Type(expr, _) => {
-            get_panic_in_expr(hir_krate, expr, acc, tcx);
+            get_panic_in_expr(hir_krate, expr, acc, tcx,call_stack);
         }
         ExprKind::DropTemps(expr) => {
-            get_panic_in_expr(hir_krate, expr, acc, tcx);
+            get_panic_in_expr(hir_krate, expr, acc, tcx,call_stack);
         }
         ExprKind::Let(let_) => {
-            get_panic_in_expr(hir_krate, let_.init, acc, tcx);
+            get_panic_in_expr(hir_krate, let_.init, acc, tcx,call_stack);
         }
         ExprKind::If(cond, if_block, Some(else_block)) => {
-            get_panic_in_expr(hir_krate, cond, acc, tcx);
-            get_panic_in_expr(hir_krate, if_block, acc, tcx);
-            get_panic_in_expr(hir_krate, else_block, acc, tcx);
+            get_panic_in_expr(hir_krate, cond, acc, tcx,call_stack);
+            get_panic_in_expr(hir_krate, if_block, acc, tcx,call_stack);
+            get_panic_in_expr(hir_krate, else_block, acc, tcx,call_stack);
         }
         ExprKind::If(cond, if_block, None) => {
-            get_panic_in_expr(hir_krate, cond, acc, tcx);
-            get_panic_in_expr(hir_krate, if_block, acc, tcx);
+            get_panic_in_expr(hir_krate, cond, acc, tcx,call_stack);
+            get_panic_in_expr(hir_krate, if_block, acc, tcx,call_stack);
         }
         // TODO check if label is allow_panic
         ExprKind::Loop(block, _, _, _) => {
-            get_panic_in_block(hir_krate, block, acc, tcx);
+            get_panic_in_block(hir_krate, block, acc, tcx,call_stack);
         }
         ExprKind::Match(expr, arms, _) => {
-            get_panic_in_expr(hir_krate, expr, acc, tcx);
+            get_panic_in_expr(hir_krate, expr, acc, tcx,call_stack);
             for arm in arms {
                 match arm.guard {
-                    Some(Guard::If(expr)) => get_panic_in_expr(hir_krate, expr, acc, tcx),
-                    Some(Guard::IfLet(let_)) => get_panic_in_expr(hir_krate, let_.init, acc, tcx),
+                    Some(Guard::If(expr)) => get_panic_in_expr(hir_krate, expr, acc, tcx,call_stack),
+                    Some(Guard::IfLet(let_)) => get_panic_in_expr(hir_krate, let_.init, acc, tcx,call_stack),
                     None => (),
                 };
-                get_panic_in_expr(hir_krate, arm.body, acc, tcx);
+                get_panic_in_expr(hir_krate, arm.body, acc, tcx,call_stack);
             }
         }
         ExprKind::Closure(closure) => {
             let expr = hir_krate.body(closure.body).value;
-            get_panic_in_expr(hir_krate, expr, acc, tcx);
+            get_panic_in_expr(hir_krate, expr, acc, tcx,call_stack);
         }
         ExprKind::Block(block, Some(label)) => {
             if !label.ident.as_str().contains("allow_panic") {
-                get_panic_in_block(hir_krate, block, acc, tcx);
+                get_panic_in_block(hir_krate, block, acc, tcx,call_stack);
             }
         }
         ExprKind::Block(block, None) => {
-            get_panic_in_block(hir_krate, block, acc, tcx);
+            get_panic_in_block(hir_krate, block, acc, tcx,call_stack);
         }
         ExprKind::Assign(arg1, arg2, _) => {
-            get_panic_in_expr(hir_krate, arg1, acc, tcx);
-            get_panic_in_expr(hir_krate, arg2, acc, tcx);
+            get_panic_in_expr(hir_krate, arg1, acc, tcx,call_stack);
+            get_panic_in_expr(hir_krate, arg2, acc, tcx,call_stack);
         }
         // TODO check if BinOp can panic
         ExprKind::AssignOp(_, arg1, arg2) => {
-            get_panic_in_expr(hir_krate, arg1, acc, tcx);
-            get_panic_in_expr(hir_krate, arg2, acc, tcx);
+            get_panic_in_expr(hir_krate, arg1, acc, tcx,call_stack);
+            get_panic_in_expr(hir_krate, arg2, acc, tcx,call_stack);
         }
         ExprKind::Field(expr, _) => {
-            get_panic_in_expr(hir_krate, expr, acc, tcx);
+            get_panic_in_expr(hir_krate, expr, acc, tcx,call_stack);
         }
         ExprKind::Index(arg1, arg2) => {
-            get_panic_in_expr(hir_krate, arg1, acc, tcx);
-            get_panic_in_expr(hir_krate, arg2, acc, tcx);
+            get_panic_in_expr(hir_krate, arg1, acc, tcx,call_stack);
+            get_panic_in_expr(hir_krate, arg2, acc, tcx,call_stack);
         }
-        ExprKind::Path(path) => handle_qpath(hir_krate, path, acc, tcx),
+        ExprKind::Path(path) => handle_qpath(hir_krate, path, acc, tcx,call_stack),
         ExprKind::AddrOf(_, _, expr) => {
-            get_panic_in_expr(hir_krate, expr, acc, tcx);
+            get_panic_in_expr(hir_krate, expr, acc, tcx,call_stack);
         }
         ExprKind::Break(_, Some(expr)) => {
-            get_panic_in_expr(hir_krate, expr, acc, tcx);
+            get_panic_in_expr(hir_krate, expr, acc, tcx,call_stack);
         }
         ExprKind::Break(_, None) => (),
         ExprKind::Continue(_) => (),
         ExprKind::Ret(Some(expr)) => {
-            get_panic_in_expr(hir_krate, expr, acc, tcx);
+            get_panic_in_expr(hir_krate, expr, acc, tcx,call_stack);
         }
         ExprKind::Ret(None) => (),
         ExprKind::InlineAsm(_) => (),
         ExprKind::OffsetOf(_, _) => (),
         ExprKind::Struct(_, fields, Some(base)) => {
-            get_panic_in_expr(hir_krate, base, acc, tcx);
+            get_panic_in_expr(hir_krate, base, acc, tcx,call_stack);
             for field in fields {
-                get_panic_in_expr(hir_krate, field.expr, acc, tcx);
+                get_panic_in_expr(hir_krate, field.expr, acc, tcx,call_stack);
             }
         }
         ExprKind::Struct(_, fields, None) => {
             for field in fields {
-                get_panic_in_expr(hir_krate, field.expr, acc, tcx);
+                get_panic_in_expr(hir_krate, field.expr, acc, tcx,call_stack);
             }
         }
         ExprKind::Repeat(elem, _) => {
-            get_panic_in_expr(hir_krate, elem, acc, tcx);
+            get_panic_in_expr(hir_krate, elem, acc, tcx,call_stack);
         }
         ExprKind::Yield(expr, _) => {
-            get_panic_in_expr(hir_krate, expr, acc, tcx);
+            get_panic_in_expr(hir_krate, expr, acc, tcx,call_stack);
         }
         ExprKind::Err(_) => panic!(),
     }
@@ -415,26 +429,27 @@ fn get_panic_in_expr<'tcx>(
 fn get_panic_in_stmt<'tcx>(
     hir_krate: &mut Map<'tcx>,
     stmt: &StmtKind<'tcx>,
-    acc: &mut HashMap<String, Vec<DefId>>,
+    acc: &mut HashMap<String, Vec<(DefId,Vec<String>)>>,
     tcx: &mut TyCtxt<'tcx>,
+    call_stack: &mut Vec<String>
 ) {
     match stmt {
         StmtKind::Local(local) => {
             if let Some(expr) = local.init {
-                get_panic_in_expr(hir_krate, expr, acc, tcx);
+                get_panic_in_expr(hir_krate, expr, acc, tcx,call_stack);
             }
             if let Some(block) = local.els {
                 for stmt in block.stmts {
-                    get_panic_in_stmt(hir_krate, &stmt.kind, acc, tcx);
+                    get_panic_in_stmt(hir_krate, &stmt.kind, acc, tcx,call_stack);
                 }
                 if let Some(expr) = block.expr {
-                    get_panic_in_expr(hir_krate, expr, acc, tcx);
+                    get_panic_in_expr(hir_krate, expr, acc, tcx,call_stack);
                 }
             }
         }
         StmtKind::Item(_) => (),
-        StmtKind::Expr(expr) => get_panic_in_expr(hir_krate, expr, acc, tcx),
-        StmtKind::Semi(expr) => get_panic_in_expr(hir_krate, expr, acc, tcx),
+        StmtKind::Expr(expr) => get_panic_in_expr(hir_krate, expr, acc, tcx,call_stack),
+        StmtKind::Semi(expr) => get_panic_in_expr(hir_krate, expr, acc, tcx,call_stack),
     }
 }
 
