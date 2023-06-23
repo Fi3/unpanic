@@ -208,7 +208,7 @@ fn handle_qpath<'tcx>(
             let mut s = segment.hir_id.clone();
             s.local_id = local;
             let result = tcx.typeck(segment.hir_id.owner.def_id);
-            match dbg!(result.qpath_res(&qpath, s)) {
+            match result.qpath_res(&qpath, s) {
                 Res::Def(def_kind, def_id) => {
                     let path = format!("{:?}", def_id);
                     let path: Vec<&str> = path.split("::").collect();
