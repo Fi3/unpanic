@@ -3,7 +3,7 @@ use rustc_errors::registry::Registry;
 use rustc_hash::{FxHashMap, FxHashSet};
 use rustc_hir::{
     def::DefKind, def::Res, def_id::DefId, Block, BodyId, Expr, ExprKind, Guard, Node, QPath,
-    StmtKind
+    StmtKind,
 };
 use rustc_hir::{def_id::LOCAL_CRATE, hir_id::ItemLocalId};
 use rustc_interface::Config;
@@ -38,11 +38,17 @@ impl HirTraverser {
             let keys = &self.function_to_check.clone();
             let keys = keys.keys();
             for key in keys {
-                let to_check = self.function_to_check.remove(key).expect("ERROR: No key in deps map");
+                let to_check = self
+                    .function_to_check
+                    .remove(key)
+                    .expect("ERROR: No key in deps map");
                 match key.as_str() {
                     "std" | "alloc" | "core" => eprintln!("skip std"),
                     _ => {
-                        let (_, dep_args) = self.dep_map.get_mut(key).expect("ERROR: No key in deps map");
+                        let (_, dep_args) = self
+                            .dep_map
+                            .get_mut(key)
+                            .expect("ERROR: No key in deps map");
                         let target_config = config_from_args(&dep_args, &self.sysroot);
                         self.check_crate(target_config, Some(to_check));
                     }
@@ -58,31 +64,27 @@ impl HirTraverser {
     ) {
         rustc_interface::run_compiler(target_config, |compiler| {
             compiler.enter(|queries| {
-                queries.global_ctxt().expect("ERROR: Can not get global context").enter(|mut tcx| {
-                    if !tcx.sess.rust_2018() {
-                        panic!("Rust 2018 is required");
-                    }
-                    let ids = match function_to_check {
-                        Some(ids) => {
-                            get_function_for_dependency(&mut tcx.hir(), ids)
-                        },
-                        None => {
-                            get_functions(&mut tcx.hir())
-                        },
-                    };
-                    for elem in &ids {
-                        let blocks = &elem.1.0;
-                        let block = blocks[0];
-                        let mut call_stack = elem.1.1.clone();
-                        get_panic_in_block(
-                            &mut tcx.hir(),
-                            block,
-                            &mut self.function_to_check,
-                            &mut tcx,
-                            &mut call_stack,
-                        );
-                    }
-                })
+                queries
+                    .global_ctxt()
+                    .expect("ERROR: Can not get global context")
+                    .enter(|mut tcx| {
+                        let ids = match function_to_check {
+                            Some(ids) => get_function_for_dependency(&mut tcx.hir(), ids),
+                            None => get_functions(&mut tcx.hir()),
+                        };
+                        for elem in &ids {
+                            let blocks = &elem.1 .0;
+                            let block = blocks[0];
+                            let mut call_stack = elem.1 .1.clone();
+                            get_panic_in_block(
+                                &mut tcx.hir(),
+                                block,
+                                &mut self.function_to_check,
+                                &mut tcx,
+                                &mut call_stack,
+                            );
+                        }
+                    })
             })
         });
     }
@@ -262,7 +264,7 @@ fn handle_solved_path<'tcx>(
                         eprintln!("    {}", funtion);
                         eprintln!("");
                     }
-                    return
+                    return;
                 }
                 if let Some(functions) = acc.get_mut(&krate_name.to_string()) {
                     functions.push((def_id, call_stack.clone()));
@@ -270,7 +272,7 @@ fn handle_solved_path<'tcx>(
                     acc.insert(krate_name.to_string(), vec![(def_id, call_stack.clone())]);
                 }
             }
-        },
+        }
         DefKind::AssocFn => handle_assoc_fn(hir_krate, def_id, acc, tcx, call_stack),
         // TODO
         _ => (),
@@ -284,8 +286,8 @@ fn handle_assoc_fn<'tcx>(
     def_id: DefId,
     acc: &mut HashMap<String, Vec<(DefId, Vec<String>)>>,
     tcx: &mut TyCtxt<'tcx>,
-    call_stack: &mut Vec<String>
-    ) {
+    call_stack: &mut Vec<String>,
+) {
     if let Some(local_id) = def_id.as_local() {
         let item = hir_krate.expect_impl_item(local_id);
         if let rustc_hir::ImplItemKind::Fn(_, body_id) = item.kind {
@@ -343,10 +345,12 @@ fn get_panic_in_expr<'tcx>(
         ExprKind::MethodCall(method, receiver, args, _span) => {
             let result = tcx.typeck(receiver.hir_id.owner.def_id);
             let ty = result.expr_ty(receiver);
-            let def_id = result.type_dependent_def_id(expr_.hir_id).expect("ERROR: Can not get def id");
+            let def_id = result
+                .type_dependent_def_id(expr_.hir_id)
+                .expect("ERROR: Can not get def id");
             let function = format!("{:?} in {:?}", method.ident, ty);
             call_stack.push(function);
-            handle_assoc_fn(hir_krate,def_id,acc,tcx,call_stack);
+            handle_assoc_fn(hir_krate, def_id, acc, tcx, call_stack);
 
             for expr in args {
                 get_panic_in_expr(hir_krate, expr, acc, tcx, call_stack);

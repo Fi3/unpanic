@@ -1,13 +1,12 @@
 /// Call a function that can panic imported from test1_lib
 /// When checked by unpanic it should report an error
-extern crate test1_lib;
+use test1_lib;
 
+use test1_lib::allow_panic_test::allow_panic;
 use test1_lib::function_test::function_test;
 use test1_lib::method_test::MethodTest;
-use test1_lib::allow_panic_test::allow_panic;
 
-fn main() {
-}
+fn main() {}
 
 #[allow(dead_code)]
 fn test_if_see_panics_in_imported_functions() {

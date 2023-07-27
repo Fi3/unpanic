@@ -1,5 +1,5 @@
-use std::process::Command;
 use colored::Colorize;
+use std::process::Command;
 
 fn main() {
     let porject_root = project_root::get_project_root().unwrap();
@@ -12,14 +12,16 @@ fn main() {
         .unwrap();
     let unpanic_path = format!("{}/target/debug/unpanic", porject_root);
 
-    let check_test1_with_unpanic_out = Command::new("cargo").args(["+nightly", "build", "-p", "test1_bin"])
+    let check_test1_with_unpanic_out = Command::new("cargo")
+        .args(["+nightly", "build", "-p", "test1_bin"])
         .current_dir(porject_root)
         .env("RUSTC_WRAPPER", unpanic_path)
         .env("TARGET_CRATE", "test1_bin")
         .output()
         .unwrap();
 
-    let check_test1_with_unpanic_stderr = String::from_utf8(check_test1_with_unpanic_out.stderr).unwrap();
+    let check_test1_with_unpanic_stderr =
+        String::from_utf8(check_test1_with_unpanic_out.stderr).unwrap();
 
     println!("");
     println!("{}", "TESTS: \n".green().bold());

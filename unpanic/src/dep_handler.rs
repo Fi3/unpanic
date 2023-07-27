@@ -46,10 +46,18 @@ pub fn parse_deps_args(
     };
     let mut dep_map = std::collections::HashMap::new();
     // At this point this file must exist
-    for line in std::io::BufReader::new(std::fs::File::open(path.clone()).expect(format!("ERRROR: Can not create PathBuf {:?}",path).as_str())).lines() {
+    for line in std::io::BufReader::new(
+        std::fs::File::open(path.clone())
+            .expect(format!("ERRROR: Can not create PathBuf {:?}", path).as_str()),
+    )
+    .lines()
+    {
         let line = line.expect("ERROR: No lines in deps file");
         let mut line = line.split_whitespace().map(|s| s.to_string());
-        dep_map.insert(line.next().expect("ERROR: Invalid deps file format"), (None, line.collect::<Vec<String>>()));
+        dep_map.insert(
+            line.next().expect("ERROR: Invalid deps file format"),
+            (None, line.collect::<Vec<String>>()),
+        );
     }
     std::fs::remove_file(path).expect("ERRROR: Impossible to remove deps path file");
     dep_map

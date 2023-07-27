@@ -52,14 +52,13 @@ fn main() {
         .run()
         .expect("ERROR: Fail to compile");
     if have_arg(&args, "--print=cfg") {
-        return
+        return;
     };
     if is_dependency(&args) {
         if let Ok(target_path_index) = get_target_path_index(&args) {
             write_args(args, target_path_index);
         }
     } else {
-        //let args = ARGS.to_vec().iter().map(|s| s.to_string()).collect();
         let index = get_target_path_index(&args).ok();
         let dep_map = parse_deps_args(&args, index);
         let out = Command::new("rustc")
@@ -67,7 +66,9 @@ fn main() {
             .current_dir(".")
             .output()
             .expect("ERROR: Impossible to call rustc in current directory");
-        let sysroot = std::str::from_utf8(&out.stdout).expect("ERROR: Can not retreive sysroot").trim();
+        let sysroot = std::str::from_utf8(&out.stdout)
+            .expect("ERROR: Can not retreive sysroot")
+            .trim();
         let sysroot = PathBuf::from(sysroot);
         let mut traverser = HirTraverser {
             errors: Vec::new(),

@@ -33,14 +33,23 @@ pub fn get_externs(args: &Vec<String>) -> (Externs, Vec<SearchPath>) {
         files: vec![],
     };
     for arg in externs_arg {
-        let splitted = arg.split('=').next_chunk::<2>().expect("ERROR: Invalid args format");
-        let name = splitted[0];
-        let path_str = splitted[1];
+        let splitted = arg
+            .split('=')
+            .next_chunk::<2>()
+            .expect("ERROR: Invalid args format");
+        let name = dbg!(splitted[0]);
+        let path_str = dbg!(splitted[1]);
+
         let path = Path::new(&path_str);
 
         let file = SearchPathFile {
             path: path.to_path_buf(),
-            file_name_str: path.file_name().expect("ERROR: No file name in path").to_str().expect("ERROR: Invalid file name in path").to_string(),
+            file_name_str: path
+                .file_name()
+                .expect("ERROR: No file name in path")
+                .to_str()
+                .expect("ERROR: Invalid file name in path")
+                .to_string(),
         };
         search_path.files.push(file);
 
@@ -51,12 +60,13 @@ pub fn get_externs(args: &Vec<String>) -> (Externs, Vec<SearchPath>) {
                     path,
                 )])),
                 is_private_dep: false,
-                add_prelude: false,
+                add_prelude: true,
                 nounused_dep: false,
                 force: false,
             },
         );
     }
+    dbg!(&dep_map);
     let externs = Externs::new(dep_map);
     (externs, vec![search_path])
 }
@@ -64,27 +74,34 @@ pub fn get_externs(args: &Vec<String>) -> (Externs, Vec<SearchPath>) {
 fn get_arg(args: &Vec<String>, arg_name: &str) -> Vec<String> {
     args.iter()
         .filter(|s| s.contains(arg_name) && *s != arg_name)
-        .map(|s| s.split("=").next_chunk::<2>().expect(format!("ERROR: Can not get {} in args", arg_name).as_str())[1].to_string())
+        .map(|s| {
+            s.split("=")
+                .next_chunk::<2>()
+                .expect(format!("ERROR: Can not get {} in args", arg_name).as_str())[1]
+                .to_string()
+        })
         .collect()
 }
 pub fn have_arg(args: &Vec<String>, arg_name: &str) -> bool {
     for arg in args {
         if arg == arg_name {
-            return true
+            return true;
         }
-    };
+    }
     false
 }
 
 pub fn get_edition(args: &Vec<String>) -> Edition {
-    let edition = get_arg(args, "--edition=");
+    let edition = dbg!(get_arg(args, "--edition="));
     match edition.len() {
-        0 => Edition::Edition2018,
+        0 => panic!("Must specify edition"),
         1 => match edition[0].as_str() {
+            "2015" => Edition::Edition2015,
             "2018" => Edition::Edition2018,
-            _ => todo!(),
+            "2021" => Edition::Edition2021,
+            _ => panic!("Unsupported edition {}", edition[0].as_str()),
         },
-        _ => panic!("ERROR MESSAGE"),
+        _ => panic!("Can not use more then one edition"),
     }
 }
 // TODO for now it support only one search_path
@@ -143,7 +160,10 @@ pub fn get_unpanic_path(args: &Vec<String>, index: usize) -> Result<String, Erro
     if is_valid_out_dir(out_dir) {
         let mut splitted = out_dir.split("target/");
         // already checked for path validity
-        let mut head = splitted.next().expect("ERROR: Can not split out dir").to_string();
+        let mut head = splitted
+            .next()
+            .expect("ERROR: Can not split out dir")
+            .to_string();
         let tail = splitted.next().expect("ERROR: Can not split out dir");
         head.push_str("target/no-panic/");
         head.push_str(tail);
