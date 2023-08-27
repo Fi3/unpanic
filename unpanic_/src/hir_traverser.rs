@@ -327,10 +327,7 @@ fn handle_fn<'tcx>(
         if krate_name.to_string() == "std" && fn_ident == "begin_panic"
             || krate_name.to_string() == "core" && fn_ident == "panic"
         {
-            eprintln!("OMG A PANIC");
-            for funtion in call_stack.clone() {
-                eprintln!("    {}\n", funtion);
-            }
+            log_panic_in_deny_block(call_stack);
             return;
         }
         if let Some(functions) = acc.get_mut(&krate_name.to_string()) {
@@ -352,10 +349,7 @@ fn save_non_local_def_id(
     if krate_name.to_string() == "std" && fn_ident == "begin_panic"
         || krate_name.to_string() == "core" && fn_ident == "panic"
     {
-        eprintln!("OMG A PANIC");
-        for funtion in call_stack {
-            eprintln!("    {}\n", funtion);
-        }
+        log_panic_in_deny_block(call_stack);
         return;
     }
     if let Some(functions) = acc.get_mut(&krate_name.to_string()) {
@@ -588,7 +582,7 @@ fn get_panic_in_expr<'tcx>(
             if !label.ident.as_str().contains("allow_panic") {
                 get_panic_in_block(hir_krate, block, acc, tcx, call_stack, visited_functions);
             } else {
-                eprintln!("ATTENTION ALLOW PANIC IN A DEPENDENCY");
+                log_allow_panic(call_stack);
             }
         }
         ExprKind::Block(block, None) => {
@@ -729,5 +723,19 @@ pub fn config_from_args(args: &Vec<String>, sysroot: &Path) -> Config {
         override_queries: None,
         make_codegen_backend: None,
         registry: Registry::new(rustc_error_codes::DIAGNOSTICS),
+    }
+}
+
+pub fn log_panic_in_deny_block(call_stack: &mut [String]) {
+    eprintln!("OMG A PANIC");
+    for funtion in call_stack {
+        eprintln!("    {}\n", funtion);
+    }
+}
+
+pub fn log_allow_panic(call_stack: &mut [String]) {
+    eprintln!("ATTENTION ALLOW PANIC IN A DEPENDENCY");
+    for funtion in call_stack {
+        eprintln!("    {}\n", funtion);
     }
 }

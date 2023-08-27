@@ -90,8 +90,8 @@ const TESTS: [(&str, &str, bool); 12] = [
     ),
     (
         "check if ignore allow panic blocks",
-        "allow_panic in tests/test1_bin/src/main.rs",
-        false,
+        "ATTENTION ALLOW PANIC IN A DEPENDENCY",
+        true,
     ),
     (
         "check if ignore allow panic blocks 2",
