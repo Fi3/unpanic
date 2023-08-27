@@ -5,7 +5,7 @@ use rustc_hir::{
     def::DefKind, def::Res, def_id::DefId, Block, BodyId, Expr, ExprKind, Guard, Node, QPath,
     StmtKind, TraitFn,
 };
-use rustc_hir::{def_id::LOCAL_CRATE, hir_id::ItemLocalId, HirId};
+use rustc_hir::{def_id::LOCAL_CRATE, HirId};
 use rustc_interface::Config;
 use rustc_middle::hir::map::Map;
 use rustc_middle::ty::TyCtxt;
@@ -194,7 +194,7 @@ fn get_functions<'tcx>(
 /// }
 /// ```
 ///
-/// TODO we should be able to add deny_panic everywhere TODO add issue for it and reference it here
+/// See issues: #1 and #2
 ///
 fn get_deny_panic_in_expr<'tcx>(expr: &Expr<'tcx>, blocks: &mut Vec<&Block<'tcx>>) {
     if let ExprKind::Block(block, None) = expr.kind {
@@ -242,98 +242,66 @@ fn handle_qpath<'tcx>(
             }
         }
         QPath::TypeRelative(_, segment) => {
-            // TODO this `-3` work and I donno why!
-            let local = ItemLocalId::from_usize(segment.hir_id.local_id.as_usize() - 3);
-            let mut s = segment.hir_id;
-            s.local_id = local;
             let result = tcx.typeck(segment.hir_id.owner.def_id);
             let items = result.node_types().items_in_stable_order();
             for item in items {
-                match item.1.kind() {
-                    TyKind::FnDef(def_id, generic_args) => {
-                        // Take the parent if fn def is a trait this is the trait definition
-                        let parent = tcx.parent(*def_id);
-                        // if is a trait find the implementor and handle as associate function
-                        if let Some(impls) = tcx.all_local_trait_impls(()).get(&parent) {
-                            let trait_item_name = tcx.item_name(*def_id);
-                            for impl_def_id in impls {
-                                let impl_self_ty =
-                                    tcx.type_of(impl_def_id.to_def_id()).subst_identity();
-                                if generic_args[0] == impl_self_ty.into() {
-                                    let impl_items = tcx.associated_items(impl_def_id.to_def_id());
-                                    for impl_item in impl_items.in_definition_order() {
-                                        if impl_item.name == trait_item_name {
-                                            // name of the trait item you started with
-                                            handle_assoc_fn(
-                                                hir_krate,
-                                                impl_item.def_id,
-                                                acc,
-                                                tcx,
-                                                call_stack,
-                                                visited_functions,
-                                            )
-                                        }
+                if let TyKind::FnDef(def_id, generic_args) = item.1.kind() {
+                    // Take the parent if fn def is a trait this is the trait definition
+                    let parent = tcx.parent(*def_id);
+                    // if is a trait find the implementor and handle as associate function
+                    if let Some(impls) = tcx.all_local_trait_impls(()).get(&parent) {
+                        let trait_item_name = tcx.item_name(*def_id);
+                        for impl_def_id in impls {
+                            let impl_self_ty =
+                                tcx.type_of(impl_def_id.to_def_id()).subst_identity();
+                            if generic_args[0] == impl_self_ty.into() {
+                                let impl_items = tcx.associated_items(impl_def_id.to_def_id());
+                                for impl_item in impl_items.in_definition_order() {
+                                    if impl_item.name == trait_item_name {
+                                        // name of the trait item you started with
+                                        handle_assoc_fn(
+                                            hir_krate,
+                                            impl_item.def_id,
+                                            acc,
+                                            tcx,
+                                            call_stack,
+                                            visited_functions,
+                                        )
                                     }
                                 }
                             }
-                        // If is local check if the function contains call to panic
-                        } else if let Some(local_id) = def_id.as_local() {
-                            if let Some(Node::Item(item)) = hir_krate.find_by_def_id(local_id) {
-                                if let rustc_hir::ItemKind::Fn(_, _, body_id) = item.kind {
-                                    let expr = hir_krate.body(body_id).value;
-                                    get_panic_in_expr(
-                                        hir_krate,
-                                        expr,
-                                        acc,
-                                        tcx,
-                                        call_stack,
-                                        visited_functions,
-                                    );
-                                }
-                            }
-                        // Otherwise save it for later check
-                        } else {
-                            // TODO remove these strings that get passed around
-                            let path = format!("{:?}", def_id);
-                            let path: Vec<&str> = path.split("::").collect();
-                            save_non_local_def_id(
-                                *def_id,
-                                path.last().unwrap().to_string(),
-                                acc,
-                                tcx,
-                                call_stack,
-                            );
                         }
+                    // If is local check if the function contains call to panic
+                    } else if let Some(local_id) = def_id.as_local() {
+                        if let Some(Node::Item(item)) = hir_krate.find_by_def_id(local_id) {
+                            if let rustc_hir::ItemKind::Fn(_, _, body_id) = item.kind {
+                                let expr = hir_krate.body(body_id).value;
+                                get_panic_in_expr(
+                                    hir_krate,
+                                    expr,
+                                    acc,
+                                    tcx,
+                                    call_stack,
+                                    visited_functions,
+                                );
+                            }
+                        }
+                    // Otherwise save it for later check
+                    } else {
+                        let path = format!("{:?}", def_id);
+                        let path: Vec<&str> = path.split("::").collect();
+                        save_non_local_def_id(
+                            *def_id,
+                            path.last().unwrap().to_string(),
+                            acc,
+                            tcx,
+                            call_stack,
+                        );
                     }
-                    TyKind::FnPtr(_) => todo!(),
-                    TyKind::Dynamic(_, _, _) => todo!(),
-                    TyKind::Closure(_, _) => todo!(),
-                    TyKind::Generator(_, _, _) => todo!(),
-                    _ => (),
                 }
             }
-
-            //match result.qpath_res(&qpath, s) {
-            //    Res::Def(def_kind, def_id) => {
-            //        let path = format!("{:?}", def_id);
-            //        let path: Vec<&str> = path.split("::").collect();
-            //        handle_solved_path(
-            //            hir_krate,
-            //            def_kind,
-            //            def_id,
-            //            path.last().unwrap().to_string(),
-            //            acc,
-            //            tcx,
-            //            &qpath,
-            //            call_stack,
-            //            visited_functions,
-            //        );
-            //    }
-            //    _ => todo!(),
-            //}
         }
-        // TODO
-        QPath::LangItem(_, _, _) => todo!(),
+        QPath::LangItem(_, _, _) => panic!("Unexpected QPath {:?}", qpath),
     }
 }
 /// If is local check it now
@@ -393,7 +361,10 @@ fn save_non_local_def_id(
     if let Some(functions) = acc.get_mut(&krate_name.to_string()) {
         functions.push((def_id, call_stack.to_owned()));
     } else {
-        acc.insert(krate_name.to_string(), vec![(def_id, call_stack.to_owned())]);
+        acc.insert(
+            krate_name.to_string(),
+            vec![(def_id, call_stack.to_owned())],
+        );
     }
 }
 
@@ -427,8 +398,12 @@ fn handle_solved_path<'tcx>(
         DefKind::AssocFn => {
             handle_assoc_fn(hir_krate, def_id, acc, tcx, call_stack, visited_functions)
         }
-        // TODO
-        kind => println!("Unhandled kind {:?}", kind),
+        // Ignore contructor they can no panic
+        DefKind::Ctor(_, _) => (),
+        kind => eprintln!(
+            "Unhandled kind {:?}, please open an issue on https://github.com/Fi3/unpanic/issues",
+            kind
+        ),
     }
 }
 
@@ -444,7 +419,8 @@ fn handle_assoc_fn<'tcx>(
 ) {
     if let Some(local_id) = def_id.as_local() {
         match hir_krate.get_by_def_id(local_id) {
-            // TraitItem are handled in ... TODO complete comment
+            // TraitItem are handled in handle_qpath function after typechecking we check if the
+            // element is a traititem if it is and is solvable we check the implementor for panics
             Node::TraitItem(_) => (),
             Node::ImplItem(item) => {
                 if let rustc_hir::ImplItemKind::Fn(_, body_id) = item.kind {
@@ -538,12 +514,10 @@ fn get_panic_in_expr<'tcx>(
                 get_panic_in_expr(hir_krate, expr, acc, tcx, call_stack, visited_functions);
             }
         }
-        // TODO check if BinOp can panic
         ExprKind::Binary(_, arg1, arg2) => {
             get_panic_in_expr(hir_krate, arg1, acc, tcx, call_stack, visited_functions);
             get_panic_in_expr(hir_krate, arg2, acc, tcx, call_stack, visited_functions);
         }
-        // TODO check if UnOp can panic
         ExprKind::Unary(_, arg) => {
             get_panic_in_expr(hir_krate, arg, acc, tcx, call_stack, visited_functions);
         }
@@ -583,7 +557,6 @@ fn get_panic_in_expr<'tcx>(
             get_panic_in_expr(hir_krate, cond, acc, tcx, call_stack, visited_functions);
             get_panic_in_expr(hir_krate, if_block, acc, tcx, call_stack, visited_functions);
         }
-        // TODO check if label is allow_panic
         ExprKind::Loop(block, _, _, _) => {
             get_panic_in_block(hir_krate, block, acc, tcx, call_stack, visited_functions);
         }
@@ -615,7 +588,6 @@ fn get_panic_in_expr<'tcx>(
             if !label.ident.as_str().contains("allow_panic") {
                 get_panic_in_block(hir_krate, block, acc, tcx, call_stack, visited_functions);
             } else {
-                // TODO this is always printed!
                 eprintln!("ATTENTION ALLOW PANIC IN A DEPENDENCY");
             }
         }
@@ -626,7 +598,6 @@ fn get_panic_in_expr<'tcx>(
             get_panic_in_expr(hir_krate, arg1, acc, tcx, call_stack, visited_functions);
             get_panic_in_expr(hir_krate, arg2, acc, tcx, call_stack, visited_functions);
         }
-        // TODO check if BinOp can panic
         ExprKind::AssignOp(_, arg1, arg2) => {
             get_panic_in_expr(hir_krate, arg1, acc, tcx, call_stack, visited_functions);
             get_panic_in_expr(hir_krate, arg2, acc, tcx, call_stack, visited_functions);

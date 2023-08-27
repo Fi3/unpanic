@@ -37,7 +37,7 @@ pub fn serialize_args(args: Vec<String>) -> String {
 
 // Return an hashmap with the dep name as key and the rustc args for that dep as args
 pub fn parse_deps_args(
-    args: &Vec<String>,
+    args: &[String],
     index: Option<usize>,
 ) -> std::collections::HashMap<String, (/* build.rs */ Option<Vec<String>>, Vec<String>)> {
     let path = match index {

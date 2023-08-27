@@ -29,7 +29,6 @@ pub fn get_externs(args: &Vec<String>) -> (Externs, Vec<SearchPath>) {
     get_externs_from_fs(args)
 }
 
-// TODO for now it support only one search_path
 pub fn get_externs_from_args(args: &Vec<String>) -> (Externs, Vec<SearchPath>) {
     let path_dir = get_dep_path(args);
     let mut argss = "".to_string();
@@ -159,7 +158,7 @@ pub fn get_edition(args: &[String]) -> Edition {
         _ => panic!("Can not use more then one edition"),
     }
 }
-// TODO for now it support only one search_path
+
 fn get_dep_path(args: &[String]) -> String {
     let paths = get_arg(args, "dependency");
     match paths.len() {
@@ -218,7 +217,7 @@ pub fn get_crate_name(args: &[String]) -> Result<String, Error> {
     }
 }
 
-pub fn is_dependency(args: &Vec<String>) -> bool {
+pub fn is_dependency(args: &[String]) -> bool {
     let target_crate = std::env::var("TARGET_CRATE").expect("ERROR: Env var TARGET_CRATE not set");
     let target_crate = target_crate.replace('-', "_");
     let crate_name = get_crate_name(args).expect("ERROR: Can not get crate name");

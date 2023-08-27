@@ -60,3 +60,12 @@ fn do_not_stuck_on_loops() {
         do_not_stuck_on_loops()
     }
 }
+
+#[allow(dead_code)]
+fn check_closures() {
+    #[allow(unused_labels)]
+    'deny_panic: {
+        let x = || panic!();
+        x();
+    }
+}

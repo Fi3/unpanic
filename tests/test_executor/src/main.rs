@@ -67,7 +67,7 @@ fn main() {
 }
 
 /// (Test description, String to test, The string should or should not be in the output)
-const TESTS: [(&str, &str, bool); 11] = [
+const TESTS: [(&str, &str, bool); 12] = [
     (
         "check if can see panics in function from external crates",
         "function_test in tests/test1_bin/src/main.rs",
@@ -121,6 +121,11 @@ const TESTS: [(&str, &str, bool); 11] = [
     (
         "can check nested libs with macro",
         "it_panic_nested_macro in tests/test2-lib/src/lib.rs",
+        true,
+    ),
+    (
+        "can check panics in closures",
+        "check_closures in tests/test1_bin/src/main.rs",
         true,
     ),
 ];
