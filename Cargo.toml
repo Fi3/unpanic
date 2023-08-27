@@ -5,9 +5,18 @@ edition = "2018"
 [workspace]
 
 members = [
-    "unpanic",
+    "unpanic_",
     "tests/test_executor",
     "tests/test1_bin",
     "tests/test1_lib",
+    "tests/test2-lib",
+    "tests/nested-with-macro/interface-lib",
+    "tests/nested-with-macro/optional2-lib",
+    "tests/nested-with-macro/optional1/optional1-lib",
+    "tests/nested-with-macro/optional1/optional1-macro",
+    "tests/nested-libs/interface-nested-lib",
+    "tests/nested-libs/nested-nested-lib",
+    "tests/nested-libs-feature/interface-nested-lib-feature",
+    "tests/nested-libs-feature/nested-nested-lib-feature",
 ]
 workspace.resolver = "1"

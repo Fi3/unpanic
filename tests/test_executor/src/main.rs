@@ -9,19 +9,50 @@ fn main() {
         .args(["+nightly", "build", "-p", "unpanic"])
         .current_dir(porject_root)
         .spawn()
+        .unwrap()
+        .wait()
         .unwrap();
+
     let unpanic_path = format!("{}/target/debug/unpanic", porject_root);
+    Command::new("mv")
+        .args([unpanic_path, porject_root.to_string()])
+        .spawn()
+        .unwrap()
+        .wait()
+        .unwrap();
+    let unpanic_path = format!("{}/unpanic", porject_root);
 
     let check_test1_with_unpanic_out = Command::new("cargo")
         .args(["+nightly", "build", "-p", "test1_bin"])
         .current_dir(porject_root)
-        .env("RUSTC_WRAPPER", unpanic_path)
+        .env("RUSTC_WRAPPER", unpanic_path.clone())
         .env("TARGET_CRATE", "test1_bin")
         .output()
         .unwrap();
 
-    let check_test1_with_unpanic_stderr =
+    let mut check_test1_with_unpanic_stderr =
         String::from_utf8(check_test1_with_unpanic_out.stderr).unwrap();
+
+    Command::new("rm")
+        .args(["-r", format!("{}/target", porject_root).as_str()])
+        .spawn()
+        .unwrap()
+        .wait()
+        .unwrap();
+
+    let check_test2_with_unpanic_out = Command::new("cargo")
+        .args(["+nightly", "build", "-p", "test2-lib"])
+        .current_dir(porject_root)
+        .env("RUSTC_WRAPPER", &unpanic_path)
+        .env("TARGET_CRATE", "test2-lib")
+        .output()
+        .unwrap();
+
+    check_test1_with_unpanic_stderr.push_str(
+        String::from_utf8(check_test2_with_unpanic_out.stderr)
+            .unwrap()
+            .as_str(),
+    );
 
     println!("");
     println!("{}", "TESTS: \n".green().bold());
@@ -41,7 +72,7 @@ fn main() {
 }
 
 /// (Test description, String to test, The string should or should not be in the output)
-const TESTS: [(&str, &str, bool); 6] = [
+const TESTS: [(&str, &str, bool); 11] = [
     (
         "check if can see panics in function from external crates",
         "function_test in tests/test1_bin/src/main.rs",
@@ -59,7 +90,7 @@ const TESTS: [(&str, &str, bool); 6] = [
     ),
     (
         "check if can see panics assoc fn",
-        "assoc_fn) in tests/test1_bin/src/main.rs",
+        "test_if_see_panics_in_assoc_fn in tests/test1_bin/src/main.rs",
         true,
     ),
     (
@@ -69,7 +100,32 @@ const TESTS: [(&str, &str, bool); 6] = [
     ),
     (
         "check if ignore allow panic blocks 2",
+        "function_test in tests/test1_bin/src/main.rs",
+        true,
+    ),
+    (
+        "check if handle traits 1",
         "ATTENTION ALLOW PANIC IN A DEPENDENCY",
+        true,
+    ),
+    (
+        "check if carte name that contains `-` are checked",
+        "it_panic in tests/test2-lib/src/lib.rs",
+        true,
+    ),
+    (
+        "can check nested libs",
+        "it_panic_nested in tests/nested-libs/nested-nested-lib/src/lib.rs",
+        true,
+    ),
+    (
+        "can check nested libs with feature",
+        "it_panic_nested_feature in tests/nested-libs-feature/nested-nested-lib-feature/src/lib.rs",
+        true,
+    ),
+    (
+        "can check nested libs with macro",
+        "it_panic_nested_macro in tests/test2-lib/src/lib.rs",
         true,
     ),
 ];

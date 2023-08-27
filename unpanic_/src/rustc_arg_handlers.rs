@@ -1,6 +1,6 @@
 use alloc::collections::{btree_map::BTreeMap, btree_set::BTreeSet};
 use rustc_session::{
-    config::{ExternEntry, ExternLocation, Externs},
+    config::{ErrorOutputType, ExternEntry, ExternLocation, Externs},
     search_paths::{PathKind, SearchPath, SearchPathFile},
     utils::CanonicalizedPath,
 };
@@ -22,9 +22,21 @@ pub fn get_location(args: &Vec<String>) -> Result<String, Error> {
     }
 }
 
-// TODO for now it support only one search_path
 pub fn get_externs(args: &Vec<String>) -> (Externs, Vec<SearchPath>) {
+    // Just here to check that requested extrns actually exist
+    get_externs_from_args(args);
+    // Return all the compiled libs
+    get_externs_from_fs(args)
+}
+
+// TODO for now it support only one search_path
+pub fn get_externs_from_args(args: &Vec<String>) -> (Externs, Vec<SearchPath>) {
     let path_dir = get_dep_path(args);
+    let mut argss = "".to_string();
+    for arg in args {
+        argss.push_str(" ");
+        argss.push_str(arg);
+    }
     let mut dep_map = BTreeMap::new();
     let externs_arg = _get_externs(args);
     let mut search_path = SearchPath {
@@ -32,13 +44,15 @@ pub fn get_externs(args: &Vec<String>) -> (Externs, Vec<SearchPath>) {
         dir: PathBuf::from_str(&path_dir).expect("ERROR: Invalid path_dir"),
         files: vec![],
     };
+
     for arg in externs_arg {
         let splitted = arg
             .split('=')
             .next_chunk::<2>()
             .expect("ERROR: Invalid args format");
-        let name = dbg!(splitted[0]);
-        let path_str = dbg!(splitted[1]);
+        let name = splitted[0];
+        let path_str = splitted[1];
+        let file = std::fs::File::open(&path_str).expect("ERROR: Invalid path");
 
         let path = Path::new(&path_str);
 
@@ -66,7 +80,51 @@ pub fn get_externs(args: &Vec<String>) -> (Externs, Vec<SearchPath>) {
             },
         );
     }
-    dbg!(&dep_map);
+    let externs = Externs::new(dep_map);
+    (externs, vec![search_path])
+}
+
+pub fn get_externs_from_fs(args: &Vec<String>) -> (Externs, Vec<SearchPath>) {
+    let path_dir = get_dep_path(args);
+    let mut dep_map = BTreeMap::new();
+    let compiled_libs = get_compiled_libs(&path_dir);
+    let mut search_path = SearchPath {
+        kind: PathKind::All,
+        dir: PathBuf::from_str(&path_dir).expect("ERROR: Invalid path_dir"),
+        files: vec![],
+    };
+    for path_str in compiled_libs {
+        let name = name_from_path_string(&path_str);
+        let path_str = path_dir.clone() + "/" + &path_str;
+        let file = std::fs::File::open(&path_str)
+            .expect(format!("ERROR: Invalid path {}", path_str).as_str());
+
+        let path = Path::new(&path_str);
+
+        let file = SearchPathFile {
+            path: path.to_path_buf(),
+            file_name_str: path
+                .file_name()
+                .expect("ERROR: No file name in path")
+                .to_str()
+                .expect("ERROR: Invalid file name in path")
+                .to_string(),
+        };
+        search_path.files.push(file);
+
+        dep_map.insert(
+            name.to_string(),
+            ExternEntry {
+                location: ExternLocation::ExactPaths(BTreeSet::from([CanonicalizedPath::new(
+                    path,
+                )])),
+                is_private_dep: false,
+                add_prelude: true,
+                nounused_dep: false,
+                force: false,
+            },
+        );
+    }
     let externs = Externs::new(dep_map);
     (externs, vec![search_path])
 }
@@ -92,7 +150,7 @@ pub fn have_arg(args: &Vec<String>, arg_name: &str) -> bool {
 }
 
 pub fn get_edition(args: &Vec<String>) -> Edition {
-    let edition = dbg!(get_arg(args, "--edition="));
+    let edition = get_arg(args, "--edition=");
     match edition.len() {
         0 => panic!("Must specify edition"),
         1 => match edition[0].as_str() {
@@ -106,7 +164,7 @@ pub fn get_edition(args: &Vec<String>) -> Edition {
 }
 // TODO for now it support only one search_path
 fn get_dep_path(args: &Vec<String>) -> String {
-    let paths = get_arg(args, "edition=");
+    let paths = get_arg(args, "dependency");
     match paths.len() {
         1 => paths[0].clone(),
         _ => todo!(),
@@ -123,6 +181,37 @@ fn _get_externs(args: &Vec<String>) -> Vec<String> {
     externs
 }
 
+/// Return all rmeta file for lib that have been compiled before target
+fn get_compiled_libs(path: &String) -> Vec<String> {
+    std::fs::read_dir(path)
+        .expect(format!("dependecy path do not exist: {}", path).as_str())
+        .map(|path| {
+            path.expect("direntry errror")
+                .file_name()
+                .into_string()
+                .expect("osstring error")
+        })
+        .filter(|path| path.contains(".rmeta") || path.contains(".so"))
+        .collect()
+}
+
+/// Given an rmeta file return the crate name for that file
+fn name_from_path_string(path: &String) -> String {
+    let first_part = path
+        .split("-")
+        .next()
+        .expect(format!("Invalid rmeta file name, should contain -: {}", path).as_str());
+    first_part[3..].to_string()
+}
+
+#[test]
+fn test_name_from_path_string() {
+    let name = "libinterface_nested_lib-53b4ac4b97d7f3ac.rmeta".to_string();
+    let expected = "interface_nested_lib".to_string();
+    let actual = name_from_path_string(&name);
+    assert_eq!(expected, actual);
+}
+
 pub fn get_crate_name(args: &Vec<String>) -> Result<String, Error> {
     let mut args = args.iter();
     if let Some(_) = args.position(|s| s == "--crate-name") {
@@ -133,8 +222,8 @@ pub fn get_crate_name(args: &Vec<String>) -> Result<String, Error> {
 }
 
 pub fn is_dependency(args: &Vec<String>) -> bool {
-    //dbg!(args);
     let target_crate = std::env::var("TARGET_CRATE").expect("ERROR: Env var TARGET_CRATE not set");
+    let target_crate = target_crate.replace("-", "_");
     let crate_name = get_crate_name(&args).expect("ERROR: Can not get crate name");
     target_crate != crate_name
 }

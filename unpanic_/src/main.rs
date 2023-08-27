@@ -13,11 +13,13 @@ extern crate rustc_error_codes;
 extern crate rustc_errors;
 extern crate rustc_hash;
 extern crate rustc_hir;
+extern crate rustc_hir_analysis;
 extern crate rustc_interface;
 extern crate rustc_middle;
 extern crate rustc_session;
 extern crate rustc_span;
 extern crate rustc_target;
+extern crate rustc_type_ir;
 
 use std::path::PathBuf;
 
@@ -76,6 +78,7 @@ fn main() {
             target_args: args,
             dep_map,
             sysroot,
+            visited_functions: Vec::new(),
         };
         traverser.start();
     }

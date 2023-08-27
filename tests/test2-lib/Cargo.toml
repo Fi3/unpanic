@@ -1,0 +1,13 @@
+[package]
+name = "test2-lib"
+version = "0.1.0"
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+test1_lib = { path = "../test1_lib" }
+interface-nested-lib = { path = "../nested-libs/interface-nested-lib" }
+interface-nested-lib-feature = { path = "../nested-libs-feature/interface-nested-lib-feature", features=["nested-nested-lib-feature"] }
+interface-lib = { path = "../nested-with-macro/interface-lib" }
+optional1-macro = { path = "../nested-with-macro/optional1/optional1-macro" }

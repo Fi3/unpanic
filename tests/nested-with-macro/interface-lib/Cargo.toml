@@ -1,0 +1,15 @@
+[package]
+name = "interface-lib"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+optional2-lib = { path = "../optional2-lib", optional = true }
+optional1-lib = { path = "../optional1/optional1-lib", optional = true }
+optional1-macro = { path = "../optional1/optional1-macro", optional = true }
+
+[features]
+default = ["def"]
+def = ["optional1-lib", "optional1-macro"]

@@ -1,0 +1,12 @@
+[package]
+name = "optional1-macro"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+optional1-lib = { path = "../optional1-lib" }
+
+[lib]
+proc-macro = true
