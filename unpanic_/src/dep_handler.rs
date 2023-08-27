@@ -11,7 +11,7 @@ pub fn write_args(args: Vec<String>, path_index: usize) {
     if crate_name == "build_script_build" {
         return;
     }
-    crate_name.push_str(" ");
+    crate_name.push(' ');
     let path = get_unpanic_path(&args, path_index).expect("ERROR: No unpanic path");
     let path = std::path::Path::new(&path);
     let serialized = serialize_args(args);
@@ -41,7 +41,7 @@ pub fn parse_deps_args(
     index: Option<usize>,
 ) -> std::collections::HashMap<String, (/* build.rs */ Option<Vec<String>>, Vec<String>)> {
     let path = match index {
-        Some(i) => get_unpanic_path(&args, i).expect("ERROR MESSAGE"),
+        Some(i) => get_unpanic_path(args, i).expect("ERROR MESSAGE"),
         None => "./target/no-panic/deps".to_string(),
     };
     let mut dep_map = std::collections::HashMap::new();

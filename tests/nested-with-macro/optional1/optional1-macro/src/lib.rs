@@ -39,12 +39,11 @@ fn get_struct_name(item: TokenStream) -> String {
     }
 
     // Get the struct name
-    let struct_name = match stream.next().expect("Struct has no name") {
+    match stream.next().expect("Struct has no name") {
         TokenTree::Ident(i) => i.to_string(),
         // Never executed at runtime it ok to panic
         _ => panic!("Strcut has no name"),
-    };
-    struct_name
+    }
 }
 
 fn remove_attributes(item: TokenStream) -> TokenStream {

@@ -1,18 +1,13 @@
 use rustc_driver::DEFAULT_LOCALE_RESOURCES;
 use rustc_errors::registry::Registry;
 use rustc_hash::{FxHashMap, FxHashSet};
-use rustc_hir::lang_items::LangItem;
 use rustc_hir::{
     def::DefKind, def::Res, def_id::DefId, Block, BodyId, Expr, ExprKind, Guard, Node, QPath,
     StmtKind, TraitFn,
 };
 use rustc_hir::{def_id::LOCAL_CRATE, hir_id::ItemLocalId, HirId};
-use rustc_hir_analysis::astconv::AstConv;
-use rustc_hir_analysis::collect::ItemCtxt;
 use rustc_interface::Config;
 use rustc_middle::hir::map::Map;
-use rustc_middle::ty::ParamEnv;
-use rustc_middle::ty::TraitRef;
 use rustc_middle::ty::TyCtxt;
 use rustc_session::config::*;
 use rustc_target::spec::TargetTriple;
@@ -56,7 +51,7 @@ impl HirTraverser {
                             .dep_map
                             .get_mut(key)
                             .expect("ERROR: No key in deps map");
-                        let target_config = config_from_args(&dep_args, &self.sysroot);
+                        let target_config = config_from_args(dep_args, &self.sysroot);
                         self.check_crate(target_config, Some(to_check));
                     }
                 };
@@ -77,7 +72,7 @@ impl HirTraverser {
                     .enter(|mut tcx| {
                         let ids = match function_to_check {
                             Some(ids) => get_function_for_dependency(&mut tcx.hir(), ids),
-                            None => get_functions(&mut tcx.hir(), &mut tcx),
+                            None => get_functions(&mut tcx.hir()),
                         };
                         for elem in &ids {
                             self.visited_functions = vec![];
@@ -98,6 +93,7 @@ impl HirTraverser {
         });
     }
 }
+#[allow(clippy::type_complexity)]
 fn get_function_for_dependency<'tcx>(
     hir_krate: &mut Map<'tcx>,
     ids: Vec<(DefId, Vec<String>)>,
@@ -112,8 +108,8 @@ fn get_function_for_dependency<'tcx>(
             Node::Item(item) => item.expect_fn().2,
             Node::ImplItem(item) => item.expect_fn().1,
             Node::TraitItem(item) => match item.expect_fn().1 {
-                TraitFn::Provided(body_id) => body_id.clone(),
-                TraitFn::Required(body_id) => return vec![],
+                TraitFn::Provided(body_id) => *body_id,
+                TraitFn::Required(_body_id) => return vec![],
             },
             _ => todo!(),
         };
@@ -134,9 +130,9 @@ fn get_function_for_dependency<'tcx>(
 }
 
 /// Traverse the crate and return all the functions that contains `deny_panic blocks and the blocks
+#[allow(clippy::type_complexity)]
 fn get_functions<'tcx>(
     hir_krate: &mut Map<'tcx>,
-    tcx: &mut TyCtxt<'tcx>,
 ) -> Vec<(BodyId, (Vec<&'tcx Block<'tcx>>, Vec<String>))> {
     let mut ret = vec![];
     for item_id in hir_krate.items() {
@@ -198,24 +194,18 @@ fn get_functions<'tcx>(
 /// }
 /// ```
 ///
-/// TODO we should be able to add deny_panic everywhere
+/// TODO we should be able to add deny_panic everywhere TODO add issue for it and reference it here
 ///
 fn get_deny_panic_in_expr<'tcx>(expr: &Expr<'tcx>, blocks: &mut Vec<&Block<'tcx>>) {
-    match expr.kind {
-        ExprKind::Block(block, None) => {
-            if let Some(expr) = block.expr {
-                match expr.kind {
-                    ExprKind::Block(block, Some(label)) => {
-                        if label.ident.as_str().contains("deny_panic") {
-                            blocks.push(block);
-                        }
-                    }
-                    _ => (),
+    if let ExprKind::Block(block, None) = expr.kind {
+        if let Some(expr) = block.expr {
+            if let ExprKind::Block(block, Some(label)) = expr.kind {
+                if label.ident.as_str().contains("deny_panic") {
+                    blocks.push(block);
                 }
             }
         }
-        _ => (),
-    };
+    }
 }
 
 /// If it is solved call handle_solved_path
@@ -254,7 +244,7 @@ fn handle_qpath<'tcx>(
         QPath::TypeRelative(_, segment) => {
             // TODO this `-3` work and I donno why!
             let local = ItemLocalId::from_usize(segment.hir_id.local_id.as_usize() - 3);
-            let mut s = segment.hir_id.clone();
+            let mut s = segment.hir_id;
             s.local_id = local;
             let result = tcx.typeck(segment.hir_id.owner.def_id);
             let items = result.node_types().items_in_stable_order();
@@ -288,28 +278,20 @@ fn handle_qpath<'tcx>(
                             }
                         // If is local check if the function contains call to panic
                         } else if let Some(local_id) = def_id.as_local() {
-                            match hir_krate.find_by_def_id(local_id) {
-                                Some(Node::Item(item)) => {
-                                    if let rustc_hir::ItemKind::Fn(_, _, body_id) = item.kind {
-                                        let expr = hir_krate.body(body_id).value;
-                                        get_panic_in_expr(
-                                            hir_krate,
-                                            expr,
-                                            acc,
-                                            tcx,
-                                            call_stack,
-                                            visited_functions,
-                                        );
-                                    }
+                            if let Some(Node::Item(item)) = hir_krate.find_by_def_id(local_id) {
+                                if let rustc_hir::ItemKind::Fn(_, _, body_id) = item.kind {
+                                    let expr = hir_krate.body(body_id).value;
+                                    get_panic_in_expr(
+                                        hir_krate,
+                                        expr,
+                                        acc,
+                                        tcx,
+                                        call_stack,
+                                        visited_functions,
+                                    );
                                 }
-                                _ => (),
-                            };
-                            //if let rustc_hir::ItemKind::Fn(_, _, body_id) = item.kind {
-                            //    let expr = hir_krate.body(body_id).value;
-                            //    get_panic_in_expr(hir_krate, expr, acc, tcx, call_stack,visited_functions);
-                            //}
-
-                            // Otherwise save it for later check
+                            }
+                        // Otherwise save it for later check
                         } else {
                             // TODO remove these strings that get passed around
                             let path = format!("{:?}", def_id);
@@ -379,8 +361,7 @@ fn handle_fn<'tcx>(
         {
             eprintln!("OMG A PANIC");
             for funtion in call_stack.clone() {
-                eprintln!("    {}", funtion);
-                eprintln!("");
+                eprintln!("    {}\n", funtion);
             }
             return;
         }
@@ -392,34 +373,34 @@ fn handle_fn<'tcx>(
     }
 }
 
-fn save_non_local_def_id<'tcx>(
+fn save_non_local_def_id(
     def_id: DefId,
     fn_ident: String,
     acc: &mut HashMap<String, Vec<(DefId, Vec<String>)>>,
-    tcx: &mut TyCtxt<'tcx>,
-    call_stack: &mut Vec<String>,
+    tcx: &mut TyCtxt<'_>,
+    call_stack: &mut [String],
 ) {
     let krate_name = tcx.crate_name(def_id.krate);
     if krate_name.to_string() == "std" && fn_ident == "begin_panic"
         || krate_name.to_string() == "core" && fn_ident == "panic"
     {
         eprintln!("OMG A PANIC");
-        for funtion in call_stack.clone() {
-            eprintln!("    {}", funtion);
-            eprintln!("");
+        for funtion in call_stack {
+            eprintln!("    {}\n", funtion);
         }
         return;
     }
     if let Some(functions) = acc.get_mut(&krate_name.to_string()) {
-        functions.push((def_id, call_stack.clone()));
+        functions.push((def_id, call_stack.to_owned()));
     } else {
-        acc.insert(krate_name.to_string(), vec![(def_id, call_stack.clone())]);
+        acc.insert(krate_name.to_string(), vec![(def_id, call_stack.to_owned())]);
     }
 }
 
 /// If is local check it now
 /// If is not save for later
 /// If is a panic emit an error
+#[allow(clippy::too_many_arguments)]
 fn handle_solved_path<'tcx>(
     hir_krate: &mut Map<'tcx>,
     def_kind: DefKind,
@@ -447,13 +428,9 @@ fn handle_solved_path<'tcx>(
             handle_assoc_fn(hir_krate, def_id, acc, tcx, call_stack, visited_functions)
         }
         // TODO
-        kind @ _ => println!("Unhandled kind {:?}", kind),
+        kind => println!("Unhandled kind {:?}", kind),
     }
 }
-
-use rustc_middle::ty::Binder;
-use rustc_middle::ty::GenericParamDefKind;
-use rustc_middle::ty::{GenericArg, Generics, List, Ty};
 
 /// If is local check it now
 /// If is not save for later
@@ -475,7 +452,7 @@ fn handle_assoc_fn<'tcx>(
                     get_panic_in_expr(hir_krate, expr, acc, tcx, call_stack, visited_functions);
                 }
             }
-            item @ _ => panic!("Unexpected Node {:?}", item),
+            item => panic!("Unexpected Node {:?}", item),
         }
     } else {
         let krate_name = tcx.crate_name(def_id.krate);
@@ -530,9 +507,7 @@ fn get_panic_in_expr<'tcx>(
         }
         ExprKind::Call(call, args) => {
             let hir_id = call.hir_id;
-            if visited_functions.contains(&hir_id) {
-                ()
-            } else {
+            if !visited_functions.contains(&hir_id) {
                 visited_functions.push(hir_id);
                 get_panic_in_expr(hir_krate, call, acc, tcx, call_stack, visited_functions);
                 for expr in args {
@@ -542,9 +517,7 @@ fn get_panic_in_expr<'tcx>(
         }
         ExprKind::MethodCall(method, receiver, args, _span) => {
             let hir_id = method.hir_id;
-            if visited_functions.contains(&hir_id) {
-                ()
-            } else {
+            if !visited_functions.contains(&hir_id) {
                 visited_functions.push(hir_id);
                 let result = tcx.typeck(receiver.hir_id.owner.def_id);
                 let ty = result.expr_ty(receiver);
@@ -757,10 +730,10 @@ fn get_panic_in_stmt<'tcx>(
 }
 
 pub fn config_from_args(args: &Vec<String>, sysroot: &Path) -> Config {
-    let src_path = &get_location(&args).expect("ERROR: No location in args");
+    let src_path = &get_location(args).expect("ERROR: No location in args");
     let src_path = Path::new(src_path);
-    let (externs, search_paths) = get_externs(&args);
-    let edition = get_edition(&args);
+    let (externs, search_paths) = get_externs(args);
+    let edition = get_edition(args);
     Config {
         opts: Options {
             maybe_sysroot: Some(sysroot.to_path_buf()),
@@ -769,7 +742,7 @@ pub fn config_from_args(args: &Vec<String>, sysroot: &Path) -> Config {
             edition,
             search_paths,
             target_triple: TargetTriple::TargetTriple("x86_64-unknown-linux-gnu".to_string()),
-            crate_name: Some(get_crate_name(&args).expect("ERROR: No crate name in args")),
+            crate_name: Some(get_crate_name(args).expect("ERROR: No crate name in args")),
             ..Options::default()
         },
         input: Input::File(src_path.to_path_buf()),
@@ -784,6 +757,6 @@ pub fn config_from_args(args: &Vec<String>, sysroot: &Path) -> Config {
         register_lints: None,
         override_queries: None,
         make_codegen_backend: None,
-        registry: Registry::new(&rustc_error_codes::DIAGNOSTICS),
+        registry: Registry::new(rustc_error_codes::DIAGNOSTICS),
     }
 }

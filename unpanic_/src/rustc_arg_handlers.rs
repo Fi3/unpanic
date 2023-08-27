@@ -1,6 +1,6 @@
 use alloc::collections::{btree_map::BTreeMap, btree_set::BTreeSet};
 use rustc_session::{
-    config::{ErrorOutputType, ExternEntry, ExternLocation, Externs},
+    config::{ExternEntry, ExternLocation, Externs},
     search_paths::{PathKind, SearchPath, SearchPathFile},
     utils::CanonicalizedPath,
 };
@@ -11,9 +11,9 @@ use crate::errors::Error;
 use std::str::FromStr;
 
 /// Get the args from cargo and return the path for the sources
-pub fn get_location(args: &Vec<String>) -> Result<String, Error> {
+pub fn get_location(args: &[String]) -> Result<String, Error> {
     let mut args = args.iter();
-    if let Some(_) = args.position(|s| s == "--crate-name") {
+    if args.any(|s| s == "--crate-name") {
         args.next().ok_or(Error::SrcLocationMissing)?;
         args.next().ok_or(Error::SrcLocationMissing)?;
         args.next().ok_or(Error::SrcLocationMissing).cloned()
@@ -34,7 +34,7 @@ pub fn get_externs_from_args(args: &Vec<String>) -> (Externs, Vec<SearchPath>) {
     let path_dir = get_dep_path(args);
     let mut argss = "".to_string();
     for arg in args {
-        argss.push_str(" ");
+        argss.push(' ');
         argss.push_str(arg);
     }
     let mut dep_map = BTreeMap::new();
@@ -52,7 +52,6 @@ pub fn get_externs_from_args(args: &Vec<String>) -> (Externs, Vec<SearchPath>) {
             .expect("ERROR: Invalid args format");
         let name = splitted[0];
         let path_str = splitted[1];
-        let file = std::fs::File::open(&path_str).expect("ERROR: Invalid path");
 
         let path = Path::new(&path_str);
 
@@ -84,7 +83,7 @@ pub fn get_externs_from_args(args: &Vec<String>) -> (Externs, Vec<SearchPath>) {
     (externs, vec![search_path])
 }
 
-pub fn get_externs_from_fs(args: &Vec<String>) -> (Externs, Vec<SearchPath>) {
+pub fn get_externs_from_fs(args: &[String]) -> (Externs, Vec<SearchPath>) {
     let path_dir = get_dep_path(args);
     let mut dep_map = BTreeMap::new();
     let compiled_libs = get_compiled_libs(&path_dir);
@@ -96,8 +95,6 @@ pub fn get_externs_from_fs(args: &Vec<String>) -> (Externs, Vec<SearchPath>) {
     for path_str in compiled_libs {
         let name = name_from_path_string(&path_str);
         let path_str = path_dir.clone() + "/" + &path_str;
-        let file = std::fs::File::open(&path_str)
-            .expect(format!("ERROR: Invalid path {}", path_str).as_str());
 
         let path = Path::new(&path_str);
 
@@ -129,11 +126,11 @@ pub fn get_externs_from_fs(args: &Vec<String>) -> (Externs, Vec<SearchPath>) {
     (externs, vec![search_path])
 }
 
-fn get_arg(args: &Vec<String>, arg_name: &str) -> Vec<String> {
+fn get_arg(args: &[String], arg_name: &str) -> Vec<String> {
     args.iter()
         .filter(|s| s.contains(arg_name) && *s != arg_name)
         .map(|s| {
-            s.split("=")
+            s.split('=')
                 .next_chunk::<2>()
                 .expect(format!("ERROR: Can not get {} in args", arg_name).as_str())[1]
                 .to_string()
@@ -149,7 +146,7 @@ pub fn have_arg(args: &Vec<String>, arg_name: &str) -> bool {
     false
 }
 
-pub fn get_edition(args: &Vec<String>) -> Edition {
+pub fn get_edition(args: &[String]) -> Edition {
     let edition = get_arg(args, "--edition=");
     match edition.len() {
         0 => panic!("Must specify edition"),
@@ -163,7 +160,7 @@ pub fn get_edition(args: &Vec<String>) -> Edition {
     }
 }
 // TODO for now it support only one search_path
-fn get_dep_path(args: &Vec<String>) -> String {
+fn get_dep_path(args: &[String]) -> String {
     let paths = get_arg(args, "dependency");
     match paths.len() {
         1 => paths[0].clone(),
@@ -171,7 +168,7 @@ fn get_dep_path(args: &Vec<String>) -> String {
     }
 }
 
-fn _get_externs(args: &Vec<String>) -> Vec<String> {
+fn _get_externs(args: &[String]) -> Vec<String> {
     let mut externs = vec![];
     for (i, arg) in args.iter().enumerate() {
         if arg == "--extern" {
@@ -184,7 +181,7 @@ fn _get_externs(args: &Vec<String>) -> Vec<String> {
 /// Return all rmeta file for lib that have been compiled before target
 fn get_compiled_libs(path: &String) -> Vec<String> {
     std::fs::read_dir(path)
-        .expect(format!("dependecy path do not exist: {}", path).as_str())
+        .unwrap_or_else(|_| panic!("dependecy path do not exist: {}", path))
         .map(|path| {
             path.expect("direntry errror")
                 .file_name()
@@ -198,9 +195,9 @@ fn get_compiled_libs(path: &String) -> Vec<String> {
 /// Given an rmeta file return the crate name for that file
 fn name_from_path_string(path: &String) -> String {
     let first_part = path
-        .split("-")
+        .split('-')
         .next()
-        .expect(format!("Invalid rmeta file name, should contain -: {}", path).as_str());
+        .unwrap_or_else(|| panic!("Invalid rmeta file name, should contain -: {}", path));
     first_part[3..].to_string()
 }
 
@@ -212,9 +209,9 @@ fn test_name_from_path_string() {
     assert_eq!(expected, actual);
 }
 
-pub fn get_crate_name(args: &Vec<String>) -> Result<String, Error> {
+pub fn get_crate_name(args: &[String]) -> Result<String, Error> {
     let mut args = args.iter();
-    if let Some(_) = args.position(|s| s == "--crate-name") {
+    if args.any(|s| s == "--crate-name") {
         args.next().ok_or(Error::CrateNameMissing).cloned()
     } else {
         Err(Error::CrateNameMissing)
@@ -223,14 +220,14 @@ pub fn get_crate_name(args: &Vec<String>) -> Result<String, Error> {
 
 pub fn is_dependency(args: &Vec<String>) -> bool {
     let target_crate = std::env::var("TARGET_CRATE").expect("ERROR: Env var TARGET_CRATE not set");
-    let target_crate = target_crate.replace("-", "_");
-    let crate_name = get_crate_name(&args).expect("ERROR: Can not get crate name");
+    let target_crate = target_crate.replace('-', "_");
+    let crate_name = get_crate_name(args).expect("ERROR: Can not get crate name");
     target_crate != crate_name
 }
 
 pub fn get_target_path_index(args: &Vec<String>) -> Result<usize, Error> {
     if let Some(i) = args.iter().position(|s| s == "--out-dir") {
-        if args.len() - 1 >= i + 1 {
+        if args.len() > i + 1 {
             Ok(i + 1)
         } else {
             Err(Error::TargetPathMissing)
@@ -239,12 +236,12 @@ pub fn get_target_path_index(args: &Vec<String>) -> Result<usize, Error> {
         Err(Error::TargetPathMissing)
     }
 }
-fn is_valid_out_dir(_out_dir: &String) -> bool {
+fn is_valid_out_dir(_out_dir: &str) -> bool {
     true
 }
 
 // Get the path where we save dependecy name and rustc arg for that crate
-pub fn get_unpanic_path(args: &Vec<String>, index: usize) -> Result<String, Error> {
+pub fn get_unpanic_path(args: &[String], index: usize) -> Result<String, Error> {
     let out_dir = &args[index];
     if is_valid_out_dir(out_dir) {
         let mut splitted = out_dir.split("target/");

@@ -54,15 +54,10 @@ fn main() {
             .as_str(),
     );
 
-    println!("");
-    println!("{}", "TESTS: \n".green().bold());
+    println!("\n{}", "TESTS: \n".green().bold());
     for (description, test, should_contain) in TESTS {
         let test = check_test1_with_unpanic_stderr.contains(test);
-        let test_pass = match (test, should_contain) {
-            (true, true) => true,
-            (false, false) => true,
-            _ => false,
-        };
+        let test_pass = matches!((test, should_contain), (true, true) | (false, false));
         if test_pass {
             println!("    {}{}", "Ok: ".green(), description);
         } else {
