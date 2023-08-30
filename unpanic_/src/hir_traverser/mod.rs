@@ -130,7 +130,7 @@ fn get_impl_item<'tcx>(
     let trait_def_id = tcx.parent(trait_fn_def_id);
     let trait_fn_name = tcx.item_name(trait_fn_def_id);
     for impl_def_id in tcx.all_local_trait_impls(()).get(&trait_def_id)? {
-        let implementor_type = tcx.type_of(impl_def_id.to_def_id()).subst_identity();
+        let implementor_type = tcx.type_of(impl_def_id.to_def_id()).skip_binder();
         if implementor_type == receiver {
             for impl_item in tcx
                 .associated_items(impl_def_id.to_def_id())

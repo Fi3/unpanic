@@ -38,6 +38,7 @@ pub fn config_from_args(args: &Vec<String>, sysroot: &Path) -> Config {
         override_queries: None,
         make_codegen_backend: None,
         registry: Registry::new(rustc_error_codes::DIAGNOSTICS),
+        ice_file: None,
     }
 }
 

@@ -1,4 +1,4 @@
 [toolchain]
-channel = "nightly-2023-06-02-x86_64-unknown-linux-gnu"
+channel = "nightly-2023-08-25-x86_64-unknown-linux-gnu"
 components = []
 profile = "minimal"

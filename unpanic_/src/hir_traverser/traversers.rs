@@ -235,7 +235,7 @@ pub fn get_panic_in_expr<'tcx>(
         ExprKind::Field(expr, _) => {
             get_panic_in_expr(hir_krate, expr, acc, tcx, call_stack, visited_functions);
         }
-        ExprKind::Index(arg1, arg2) => {
+        ExprKind::Index(arg1, arg2,_) => {
             get_panic_in_expr(hir_krate, arg1, acc, tcx, call_stack, visited_functions);
             get_panic_in_expr(hir_krate, arg2, acc, tcx, call_stack, visited_functions);
         }
@@ -287,6 +287,7 @@ pub fn get_panic_in_expr<'tcx>(
         ExprKind::Yield(expr, _) => {
             get_panic_in_expr(hir_krate, expr, acc, tcx, call_stack, visited_functions);
         }
+        ExprKind::Become(_) => todo!(),
         ExprKind::Err(_) => panic!(),
     }
 }
