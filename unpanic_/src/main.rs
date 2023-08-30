@@ -3,7 +3,6 @@
 #![feature(exact_size_is_empty)]
 #![feature(iter_next_chunk)]
 
-use std::collections::HashMap;
 use std::process::Command;
 
 extern crate alloc;
@@ -32,6 +31,7 @@ mod dep_handler;
 mod errors;
 mod hir_traverser;
 mod rustc_arg_handlers;
+mod utils;
 use dep_handler::*;
 use hir_traverser::*;
 use rustc_arg_handlers::*;
@@ -72,14 +72,7 @@ fn main() {
             .expect("ERROR: Can not retreive sysroot")
             .trim();
         let sysroot = PathBuf::from(sysroot);
-        let mut traverser = HirTraverser {
-            errors: Vec::new(),
-            function_to_check: HashMap::new(),
-            target_args: args,
-            dep_map,
-            sysroot,
-            visited_functions: Vec::new(),
-        };
+        let mut traverser = HirTraverser::new(args, dep_map, sysroot);
         traverser.start();
     }
 }

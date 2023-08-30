@@ -2,7 +2,7 @@
 /// When checked by unpanic it should report an error
 use test1_lib::allow_panic_test::allow_panic;
 use test1_lib::function_test::function_test;
-use test1_lib::method_test::MethodTest;
+use test1_lib::method_test::{MethodTest, Trait};
 
 fn main() {}
 
@@ -36,6 +36,23 @@ fn test_if_see_panics_in_assoc_fn() {
     #[allow(unused_labels)]
     'deny_panic: {
         MethodTest::assoc_fn();
+    }
+}
+
+#[allow(dead_code)]
+fn test_if_see_panics_in_trait_0() {
+    #[allow(unused_labels)]
+    'deny_panic: {
+        let a = MethodTest;
+        a.trait_0();
+    }
+}
+
+#[allow(dead_code)]
+fn test_if_see_panics_in_trait_1() {
+    #[allow(unused_labels)]
+    'deny_panic: {
+        MethodTest::trait_1();
     }
 }
 
