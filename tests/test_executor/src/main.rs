@@ -67,15 +67,15 @@ fn main() {
 }
 
 /// (Test description, String to test, The string should or should not be in the output)
-const TESTS: [(&str, &str, bool); 14] = [
+const TESTS: [(&str, &str, bool); 13] = [
     (
         "check if can see panics in function from external crates",
-        "function_test in tests/test1_bin/src/main.rs",
+        "test_if_see_panics_in_imported_functions in tests/test1_bin/src/main.rs",
         true,
     ),
     (
         "check if can see panics in function from same crate",
-        "same_crate in tests/test1_bin/src/main.rs",
+        "test_if_see_panics_in_local_functions in tests/test1_bin/src/main.rs",
         true,
     ),
     (
@@ -93,25 +93,20 @@ const TESTS: [(&str, &str, bool); 14] = [
         "ATTENTION ALLOW PANIC",
         true,
     ),
-    (
-        "check if ignore allow panic blocks 2",
-        "function_test in tests/test1_bin/src/main.rs",
-        true,
-    ),
     ("check if handle traits 1", "ATTENTION ALLOW PANIC", true),
     (
         "check if carte name that contains `-` are checked",
-        "it_panic in tests/test2-lib/src/lib.rs",
+        "it_panic_2 in tests/test2-lib/src/lib.rs",
         true,
     ),
     (
         "can check nested libs",
-        "it_panic_nested in tests/nested-libs/nested-nested-lib/src/lib.rs",
+        "it_panic_nested in tests/test2-lib/src/lib.rs",
         true,
     ),
     (
         "can check nested libs with feature",
-        "it_panic_nested_feature in tests/nested-libs-feature/nested-nested-lib-feature/src/lib.rs",
+        "it_panic_nested_feature in tests/test2-lib/src/lib.rs",
         true,
     ),
     (

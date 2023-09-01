@@ -86,3 +86,70 @@ fn check_closures() {
         x();
     }
 }
+
+//fn test_closure_2_<F, T, Ret>(thunk: F, x: &mut T) -> Ret
+//where
+//    F: FnOnce(&mut T) -> Ret,
+//{
+//    #[allow(unused_labels)]
+//    'deny_panic: {
+//        thunk(x)
+//    }
+//}
+//
+//#[allow(dead_code)]
+//fn test_closure_2() {
+//    test_closure_2_(|x| panic!(), &mut vec![2]);
+//}
+
+//#[macro_export]
+//macro_rules! deny_panic_closure {
+//    ($closure:expr) => {'deny_panic: {|x| $closure(x)}}
+//}
+
+fn test<N: Fn(), X: FnMut()>(f: N, mut x: X) {
+    #[allow(unused_labels)]
+    'deny_panic: {
+        f();
+    }
+    x();
+}
+
+fn il_cane() {
+    test(|| panic!(), || {});
+}
+// TSTARE CHE LE CLOSURE CHE SONO NON INDENY POSSANO PANICARE
+
+//fn giig() {}
+//fn test_cani_2<F: Clone>(f: F) {
+//    #[allow(unused_labels)]
+//    'deny_panic: {
+//        f.clone();
+//    }
+//}
+
+
+// TODO
+//struct<C: Clone> Abc {
+//    c: C,
+//}
+//
+//impl<C: Clone> Abc {
+//    pub fn gigi() {
+//        'deny_panic: {
+//            self.c.clone()
+//        }
+//    }
+//}
+//
+//struct TestStruct {}
+//impl Clone for TestStruct {
+//    fn clone(&self) -> Self {
+//        panic!()
+//    }
+//}
+//
+//fn test1() {
+//    let c = Abc { c: TestStruct {} };
+//    c.gigi();
+//}

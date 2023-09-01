@@ -1,7 +1,7 @@
 //! use rustc_interface::run_compiler to check the hir of the target crate and the dependency if
 //! there is any forbidden panic. If there is it will report it.
 use rustc_hir::def_id::DefId;
-use rustc_hir::HirId;
+use rustc_hir::{HirId,ExprKind};
 use rustc_interface::Config;
 use rustc_middle::ty::AssocItem;
 use rustc_middle::ty::Ty;
@@ -10,17 +10,20 @@ use rustc_middle::ty::TyCtxt;
 use std::{collections::HashMap, path::PathBuf};
 
 use crate::utils::config_from_args;
+use crate::utils::{log_panic_in_deny_block,log_allow_panic};
+use std::collections::VecDeque;
 
 mod function_collectors;
 mod function_handlers;
-mod path_handlers;
+//mod path_handlers;
 mod traversers;
 use function_collectors::{get_function_for_dependency, get_functions};
-use traversers::get_panic_in_block;
+use traversers::{FunctionCallPartialTree};
 
 pub struct HirTraverser {
     pub errors: Vec<String>,
     pub function_to_check: ForeignCallsToCheck,
+    //pub indirect_function_to_check: ForeignCallsToCheck,
     pub target_args: Vec<String>,
     pub dep_map: HashMap<
         /* krate name */ String,
@@ -99,21 +102,43 @@ impl HirTraverser {
                     .enter(|mut tcx| {
                         let ids = match function_to_check {
                             Some(ids) => get_function_for_dependency(&mut tcx, ids),
-                            None => get_functions(&mut tcx.hir()),
+                            None => get_functions(&mut tcx),
                         };
                         for elem in &ids {
                             self.visited_functions = vec![];
-                            let blocks = &elem.1 .0;
-                            let block = blocks[0];
                             let mut call_stack = elem.1 .1.clone();
-                            get_panic_in_block(
-                                &mut tcx.hir(),
-                                block,
-                                &mut self.function_to_check,
-                                &mut tcx,
-                                &mut call_stack,
-                                &mut self.visited_functions,
-                            );
+                            let mut traverser = FunctionCallPartialTree {
+                                tcx,
+                                visited_functions: HashMap::new(),
+                                visited_assoc_functions: HashMap::new(),
+                                /// For each allow_panic that we encounter we save the call_stack
+                                allow_panics: Vec::new(),
+                                save_stack: true,
+                                first_level_calls: Vec::new(),
+                            };
+                            for block in &elem.1.0 {
+                                traverser.traverse_block(block,&mut call_stack);
+                            }
+                            let mut to_log = vec![];
+                            for (_,(def_id,fn_ident,call_stack)) in traverser.visited_functions.iter().filter(|x| x.0.is_extern()) {
+                                function_handlers::check_fn_panics(
+                                    *def_id,
+                                    fn_ident.clone(),
+                                    &mut tcx,
+                                    &mut self.function_to_check,
+                                    call_stack,
+                                    &mut to_log,
+                                );
+                            }
+                            for (_,(def_id,receiver,call_stack)) in traverser.visited_assoc_functions.iter().filter(|x| x.0.is_extern()) {
+                                self.function_to_check.save_for_later_check(*def_id,&mut tcx,call_stack,*receiver);
+                            }
+                            for stack in to_log {
+                                log_panic_in_deny_block(&stack);
+                            }
+                            for allow_panic in traverser.allow_panics {
+                                log_allow_panic(&allow_panic);
+                            }
                         }
                     })
             })
@@ -158,6 +183,14 @@ pub struct ForeignCallsToCheck {
     >,
 }
 
+impl Clone for ForeignCallsToCheck {
+    fn clone(&self) -> Self {
+        ForeignCallsToCheck {
+            inner: self.inner.clone(),
+        }
+    }
+}
+
 impl ForeignCallsToCheck {
     pub fn new() -> Self {
         ForeignCallsToCheck {
@@ -169,7 +202,7 @@ impl ForeignCallsToCheck {
         &mut self,
         def_id: DefId,
         tcx: &mut TyCtxt<'_>,
-        call_stack: &mut [String],
+        call_stack: &[String],
         receiver: Option<DefId>,
     ) {
         let krate_name = tcx.crate_name(def_id.krate);
