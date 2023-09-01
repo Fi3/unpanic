@@ -110,16 +110,25 @@ pub fn get_functions<'tcx>(
 }
 
 /// For each expr in callers check if it contaion call to function in called;
-fn get_callers<'tcx>(tcx: &mut TyCtxt<'tcx>, callers: Vec<Block<'tcx>>, called: HashMap<DefId, HashSet<usize>>) -> Vec<Block<'tcx>> {
+fn get_callers<'tcx>(tcx: &mut TyCtxt<'tcx>, callers: Vec<Block<'tcx>>, called: HashMap<DefId, HashSet<usize>>) -> HashMap<HirId,Vec<(Block<'tcx>,DefId,HashSet<usize>)>> {
+    let mut ret: HashMap<HirId,Vec<(Block<'tcx>,DefId,HashSet<usize>)>> = HashMap::new();
     for block in callers {
         let mut traverser = FunctionCallPartialTree::new(*tcx, false);
         traverser.traverse_block(&block, &mut vec![]);
         for call in traverser.first_level_calls {
-            let def_id = dbg!(call_to_def_id(call));
-            dbg!(called.contains_key(&def_id));
+            let def_id = call_to_def_id(call);
+            if called.contains_key(&def_id) {
+                if let Some(v) = ret.get_mut(&block.hir_id) {
+                    let set = called.get(&def_id).unwrap().clone();
+                    v.push((block,def_id, set));
+                } else {
+                    let set = called.get(&def_id).unwrap().clone();
+                    ret.insert(block.hir_id, vec![(block,def_id,set)]);
+                }
+            }
         }
     };
-    todo!()
+    ret
 }
 
 use rustc_middle::ty::TyCtxt;
