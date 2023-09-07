@@ -18,7 +18,7 @@ pub fn check_fn_panics<'tcx>(
     to_log: &mut Vec<Vec<String>>,
 ) {
     let hir_krate = tcx.hir();
-    if ! def_id.is_local() {
+    if !def_id.is_local() {
         let krate_name = tcx.crate_name(def_id.krate);
         if is_panic(krate_name.as_str(), fn_ident.as_str()) {
             to_log.push(call_stack.to_vec());
@@ -31,10 +31,7 @@ pub fn check_fn_panics<'tcx>(
 }
 
 pub fn is_panic(krate_name: &str, fn_name: &str) -> bool {
-    let look_for = vec![
-        ("std", vec!["begin_panic"]),
-        ("core", vec!["panic"]),
-    ];
+    let look_for = vec![("std", vec!["begin_panic"]), ("core", vec!["panic"])];
     for krate in look_for {
         let krate_name = krate.0;
         let function_names = krate.1;
@@ -58,7 +55,6 @@ pub fn check_assoc_fn<'tcx>(
     if let Some(local_id) = def_id.as_local() {
         panic!()
     } else {
-        acc
-            .save_for_later_check(def_id, tcx, call_stack, receiver);
+        acc.save_for_later_check(def_id, tcx, call_stack, receiver);
     }
 }

@@ -15,8 +15,12 @@ pub fn get_location(args: &[String]) -> Result<String, Error> {
     let mut args = args.iter();
     if args.any(|s| s == "--crate-name") {
         args.next().ok_or(Error::SrcLocationMissing)?;
-        args.next().ok_or(Error::SrcLocationMissing)?;
-        args.next().ok_or(Error::SrcLocationMissing).cloned()
+        let possible_location = args.next().ok_or(Error::SrcLocationMissing)?;
+        if &possible_location[..2] == "--" {
+            args.next().ok_or(Error::SrcLocationMissing).cloned()
+        } else {
+            Ok(possible_location.clone())
+        }
     } else {
         Err(Error::SrcLocationMissing)
     }
@@ -43,8 +47,11 @@ pub fn get_externs_from_args(args: &Vec<String>) -> (Externs, Vec<SearchPath>) {
         dir: PathBuf::from_str(&path_dir).expect("ERROR: Invalid path_dir"),
         files: vec![],
     };
-
     for arg in externs_arg {
+        if arg == "proc_macro" {
+            // TODO fix it
+            continue;
+        }
         let splitted = arg
             .split('=')
             .next_chunk::<2>()
@@ -148,7 +155,8 @@ pub fn have_arg(args: &Vec<String>, arg_name: &str) -> bool {
 pub fn get_edition(args: &[String]) -> Edition {
     let edition = get_arg(args, "--edition=");
     match edition.len() {
-        0 => panic!("Must specify edition"),
+        // TODO TODO TODO get the default value from a config file
+        0 => Edition::Edition2021,
         1 => match edition[0].as_str() {
             "2015" => Edition::Edition2015,
             "2018" => Edition::Edition2018,

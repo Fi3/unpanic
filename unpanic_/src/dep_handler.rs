@@ -46,16 +46,19 @@ pub fn parse_deps_args(
     };
     let mut dep_map = std::collections::HashMap::new();
     // At this point this file must exist
-    for line in
+    for line_ in
         std::io::BufReader::new(std::fs::File::open(path.clone()).unwrap_or(
             std::fs::File::open("/dev/null").expect("ERROR: Impossible to open dev null"),
         ))
         .lines()
     {
-        let line = line.expect("ERROR: No lines in deps file");
-        let mut line = line.split_whitespace().map(|s| s.to_string());
+        let line_ = line_.expect("ERROR: No lines in deps file");
+        if line_ == "" {
+            continue;
+        }
+        let mut line = line_.split_whitespace().map(|s| s.to_string());
         dep_map.insert(
-            line.next().expect("ERROR: Invalid deps file format"),
+            line.next().expect(format!("ERROR: Invalid deps file format \n {:#?} \n {:?}", args, line_).as_str()),
             (None, line.collect::<Vec<String>>()),
         );
     }

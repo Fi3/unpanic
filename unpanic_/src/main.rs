@@ -51,17 +51,7 @@ impl rustc_driver::Callbacks for Callbacks {
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    rustc_driver::RunCompiler::new(&args[1..], &mut Callbacks)
-        .run()
-        .expect("ERROR: Fail to compile");
-    if have_arg(&args, "--print=cfg") {
-        return;
-    };
-    if is_dependency(&args) {
-        if let Ok(target_path_index) = get_target_path_index(&args) {
-            write_args(args, target_path_index);
-        }
-    } else {
+    if ! is_dependency(&args) {
         let index = get_target_path_index(&args).ok();
         let dep_map = parse_deps_args(&args, index);
         let out = Command::new("rustc")
@@ -75,5 +65,15 @@ fn main() {
         let sysroot = PathBuf::from(sysroot);
         let mut traverser = HirTraverser::new(args, dep_map, sysroot);
         traverser.start();
+        return;
+    }
+    rustc_driver::RunCompiler::new(&args[1..], &mut Callbacks)
+        .run()
+        .expect("ERROR: Fail to compile");
+    if have_arg(&args, "--print=cfg") {
+        return;
+    };
+    if let Ok(target_path_index) = get_target_path_index(&args) {
+        write_args(args, target_path_index);
     }
 }

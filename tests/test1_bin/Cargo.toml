@@ -6,7 +6,7 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-test1_lib = { path = "../test1_lib" }
+#test1_lib = { path = "../test1_lib" }
 # unicode-ident = "1.0"
 #serde_derive_internals = { version = "0.28.0", path = "/home/user/src/serde/serde_derive_internals" }
 # proc-macro2 = "*"

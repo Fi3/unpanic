@@ -67,7 +67,7 @@ fn main() {
 }
 
 /// (Test description, String to test, The string should or should not be in the output)
-const TESTS: [(&str, &str, bool); 13] = [
+const TESTS: [(&str, &str, bool); 18] = [
     (
         "check if can see panics in function from external crates",
         "test_if_see_panics_in_imported_functions in tests/test1_bin/src/main.rs",
@@ -127,6 +127,27 @@ const TESTS: [(&str, &str, bool); 13] = [
     (
         "can check panics in non local methods 1",
         "test_if_see_panics_in_trait_1 in tests/test1_bin/src/main.rs",
+        true,
+    ),
+    (
+        "can deny_panic block in dependency",
+        "deny_panic_in_dependency in tests/test1_lib/src/lib.rs",
+        true,
+    ),
+    ("higher order function", "test_higher_order_fn_1", true),
+    (
+        "higher order function in differents crates",
+        "test_higher_order_fn_different_crate_",
+        true,
+    ),
+    (
+        "higher order function in differents crates 2",
+        "test_higher_order_fn_different_crate_2",
+        true,
+    ),
+    (
+        "higher order function with trait",
+        "test_higher_order_with_trait_1",
         true,
     ),
 ];

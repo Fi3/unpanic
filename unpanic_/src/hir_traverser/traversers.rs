@@ -170,6 +170,14 @@ impl<'tcx> FunctionCallPartialTree<'tcx> {
                 }
             }
             ExprKind::MethodCall(method, receiver, args, span) => {
+                dbg!(receiver);
+                if ! self.save_stack {
+                    self.first_level_calls.push(expr_.clone());
+                    for arg in args {
+                        self.traverse_expr(arg,call_stack);
+                    }
+                    return;
+                }
                 if ! (self.visited_assoc_functions.contains_key(&HirId_::Local(method.hir_id.owner.into())) 
                       || self.visited_assoc_functions.contains_key(&HirId_::Extern(method.hir_id.owner.into()))) 
                     && self.save_stack
@@ -306,7 +314,7 @@ impl<'tcx> FunctionCallPartialTree<'tcx> {
                             Res::Local(_) => {
                                 //dbg!(expr_);
                             },
-                            _ => panic!(),
+                            _ => (),
                         }
                     } else {
                         panic!()
@@ -319,18 +327,23 @@ impl<'tcx> FunctionCallPartialTree<'tcx> {
                         if let TyKind::FnDef(def_id, generic_args) = item.1.kind() {
                             // TODO this seems to be correct the receiver is always the first
                             // genarg but check it.
-                            let receiver = generic_args.get(0).map(|x| match x.expect_ty().kind() {
-                                rustc_middle::ty::Adt(adt_def, _) => adt_def.did(),
-                                _ => panic!(),
-                            });
-                            // If is a trait fn and is implemented solve it a visit the
+                            let receiver = generic_args.get(0).map(
+                                // TODO here we should always have a ty but we dont
+                                |x| x.as_type().map(
+                                    |ty| match ty.kind() {
+                                        rustc_middle::ty::Adt(adt_def, _) => Some(adt_def.did()),
+                                        // TODO we should never reach this point but we do
+                                        _ => None,
+                                    })
+                            ).flatten().flatten();
+                            // If is a trait fn and is implemented solve it and visit the
                             // implementation
                             if let Some(impl_item) = super::get_impl_item(
                                 &mut self.tcx,
                                 *def_id,
                                 // TODO this seems to be correct the receiver is always the first
-                                // genarg but check it.
-                                generic_args.get(0).map(|x| x.expect_ty()),
+                                // genarg but check it. It should be expect_type
+                                generic_args.get(0).map(|x| x.as_type()).flatten(),
                             ) {
                                 if let Some(local_id) = impl_item.def_id.as_local() {
                                     match hir_krate.get_by_def_id(local_id) {
@@ -439,7 +452,8 @@ impl<'tcx> FunctionCallPartialTree<'tcx> {
                 self.traverse_expr(expr,call_stack);
             }
             ExprKind::Become(_) => todo!(),
-            ExprKind::Err(_) => panic!(),
+            // TODO why we return here? Why an ExprKind:Err is found?
+            ExprKind::Err(_) => return,
         }
     }
 
