@@ -163,7 +163,7 @@ pub fn get_edition(args: &[String]) -> Edition {
             "2021" => Edition::Edition2021,
             _ => panic!("Unsupported edition {}", edition[0].as_str()),
         },
-        _ => panic!("Can not use more then one edition"),
+        _ => panic!("Can not use more then one edition {:#?}", args),
     }
 }
 
@@ -171,7 +171,18 @@ fn get_dep_path(args: &[String]) -> String {
     let paths = get_arg(args, "dependency");
     match paths.len() {
         1 => paths[0].clone(),
-        _ => todo!(),
+        2 => {
+            if paths[0] == paths[1] {
+                paths[0].clone()
+            } else {
+                dbg!(args);
+                panic!()
+            }
+        },
+        _ => {
+            dbg!(args);
+            panic!()
+        },
     }
 }
 

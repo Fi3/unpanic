@@ -462,8 +462,8 @@ fn from_callers_to_called_def_id<'tcx>(tcx: &mut TyCtxt<'tcx>, expr: Expr<'tcx>)
                                     let result = tcx.typeck(function.hir_id.owner.def_id);
                                     let ty = result.expr_ty(function);
                                     let def_id = result
-                                        .type_dependent_def_id(expr.hir_id)
-                                        .expect("ERROR: Can not get def id");
+                                        // TODO add comment why we return None here
+                                        .type_dependent_def_id(expr.hir_id)?;
                                     Some(def_id)
                                 },
                                 _ => panic!(),

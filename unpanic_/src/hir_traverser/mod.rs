@@ -79,11 +79,13 @@ impl HirTraverser {
         self.dep_map.remove("secp256k1");
         self.dep_map.remove("bitcoin_hashes");
         self.dep_map.remove("bitcoin");
+        self.dep_map.remove("async-recursion");
+        self.dep_map.remove("async_trait");
         //self.dep_map.remove("proc_macro");
         //self.dep_map.remove("proc_macro2");
         //self.dep_map.remove("tracing");
         //self.dep_map.remove("tracing_core");
-        //self.dep_map.remove("tracing_attributes");
+        self.dep_map.remove("tracing_attributes");
         //self.dep_map.remove("once_cell");
         //self.dep_map.remove("cfg_if");
         //self.dep_map.remove("aes_gcm");
@@ -252,13 +254,13 @@ impl HirTraverser {
                                 all_fn,
                                 self.deny_panic_procedural_parameters.clone(),
                             );
-                            let args_to_check = function_collectors::callers_into_args(callers);
+                            let args_to_check = dbg!(function_collectors::callers_into_args(callers));
                             for (arg, to_log, def_id) in args_to_check.iter() {
-                                let arg = function_collectors::solve_arg(
+                                let arg = dbg!(function_collectors::solve_arg(
                                     &mut tcx,
                                     arg.clone(),
                                     def_id.clone(),
-                                );
+                                ));
                                 self.visited_functions = vec![];
                                 let mut traverser = FunctionCallPartialTree {
                                     tcx,
@@ -271,6 +273,8 @@ impl HirTraverser {
                                 };
                                 let mut call_stack = vec![to_log.clone()];
                                 traverser.traverse_expr(&arg, &mut call_stack);
+                                dbg!(&traverser.visited_functions);
+                                dbg!(&traverser.visited_assoc_functions);
                                 for (_, (def_id, fn_ident, call_stack)) in traverser
                                     .visited_functions
                                     .iter()
@@ -291,7 +295,6 @@ impl HirTraverser {
                                     .filter(|x| x.0.is_extern())
                                 {
                                     self.function_to_check
-                                        // TODO we save her but not check it!!!
                                         .save_for_later_check(
                                             *def_id, &mut tcx, call_stack, *receiver,
                                         );
@@ -304,6 +307,7 @@ impl HirTraverser {
                 });
             });
         }
+        dbg!(&self.function_to_check);
         // And finally check all the non local calls
         while !self.function_to_check.keys().is_empty() {
             dbg!("ULTIMO CICLO");
@@ -358,6 +362,8 @@ fn get_impl_item<'tcx>(
     //panic!("Impossible to find trait implementation")
 }
 
+
+#[derive(Debug)]
 pub struct ForeignCallsToCheck {
     #[allow(clippy::type_complexity)]
     inner: HashMap<

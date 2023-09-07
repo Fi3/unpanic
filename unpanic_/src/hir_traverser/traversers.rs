@@ -190,14 +190,43 @@ impl<'tcx> FunctionCallPartialTree<'tcx> {
                         match ty.kind() {
                             rustc_middle::ty::Adt(adt_def, _) => {
                                 Self::add_to_stack(span,call_stack);
-                                self.visited_assoc_functions.insert(
-                                    HirId_::Extern(method.hir_id.owner.into()),
-                                    (
-                                        def_id,
-                                        Some(adt_def.did()),
-                                        call_stack.to_vec(),
-                                    )
-                                );
+                                // Check if it is a trait method
+                                if let Some(impl_item) = dbg!(super::get_impl_item(&mut self.tcx,def_id.clone(),Some(ty))) {
+                                    if let Some(local_id) = impl_item.def_id.as_local() {
+                                        match hir_krate.get_by_def_id(local_id) {
+                                            // TraitItem are handled elsewhere TODO
+                                            Node::TraitItem(_) => (),
+                                            Node::ImplItem(item) => {
+                                                if let rustc_hir::ImplItemKind::Fn(_, body_id) = item.kind {
+                                                    let expr = hir_krate.body(body_id).value;
+                                                    Self::add_to_stack(expr.span,call_stack);
+                                                    self.visited_assoc_functions.insert(
+                                                        HirId_::Local(method.hir_id.owner.into()),
+                                                        (
+                                                            def_id,
+                                                            Some(adt_def.did()),
+                                                            call_stack.to_vec(),
+                                                        )
+                                                    );
+                                                    self.traverse_expr(expr, call_stack);
+                                                }
+                                            }
+                                            item => panic!("Unexpected Node {:?}", item),
+                                        }
+                                    } else {
+                                        unreachable!()
+                                    }
+                                // Otherwise save for later check
+                                } else {
+                                    self.visited_assoc_functions.insert(
+                                        HirId_::Extern(method.hir_id.owner.into()),
+                                        (
+                                            def_id,
+                                            Some(adt_def.did()),
+                                            call_stack.to_vec(),
+                                        )
+                                    );
+                                }
                             },
                             _ => self.traverse_expr(receiver,call_stack),
                         };
