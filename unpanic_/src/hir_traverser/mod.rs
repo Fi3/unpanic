@@ -247,11 +247,11 @@ impl HirTraverser {
                         .expect("ERROR: Can not get global context")
                         .enter(|mut tcx| {
                             let all_fn = get_all_fn_in_crate(&mut tcx);
-                            let callers = dbg!(get_callers(
+                            let callers = get_callers(
                                 &mut tcx,
                                 all_fn,
                                 self.deny_panic_procedural_parameters.clone(),
-                            ));
+                            );
                             let args_to_check = function_collectors::callers_into_args(callers);
                             for (arg, to_log, def_id) in args_to_check.iter() {
                                 let arg = function_collectors::solve_arg(

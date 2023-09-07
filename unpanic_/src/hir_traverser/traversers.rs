@@ -170,7 +170,6 @@ impl<'tcx> FunctionCallPartialTree<'tcx> {
                 }
             }
             ExprKind::MethodCall(method, receiver, args, span) => {
-                dbg!(receiver);
                 if ! self.save_stack {
                     self.first_level_calls.push(expr_.clone());
                     for arg in args {

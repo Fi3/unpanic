@@ -149,11 +149,16 @@ pub fn callers_into_args<'tcx>(callers: HashMap<HirId, Vec<(Expr<'tcx>, DefId, H
                 ExprKind::MethodCall(_, _, args, _) => args,
                 _ => panic!(),
             };
-            // TODO this check should not be necessary
-            dbg!(args);
-            if args.len() > 0 {
-                for (i,def_id) in arg_indexes {
+            for (i,def_id) in arg_indexes {
+                // TODO add comment (why arg can be either i or i - 1 ??)
+                if i < &args.len() {
                     let arg = args[*i];
+                    if ! control.contains(&arg.hir_id) {
+                        control.push(arg.hir_id);
+                        ret.push((arg,to_log.clone(),def_id.clone()));
+                    }
+                } else if i > &0_usize {
+                    let arg = args[*i - 1];
                     if ! control.contains(&arg.hir_id) {
                         control.push(arg.hir_id);
                         ret.push((arg,to_log.clone(),def_id.clone()));
@@ -438,19 +443,7 @@ fn from_callers_to_called_def_id<'tcx>(tcx: &mut TyCtxt<'tcx>, expr: Expr<'tcx>)
     match expr.kind {
         ExprKind::Call(function, _) => match function.kind {
             ExprKind::Path(path) => match path {
-                QPath::Resolved(_, path) => {
-                    match path.res.opt_def_id() {
-                        Some(def_id) => Some(def_id),
-                        None => {
-                            match path.res {
-                                Res::Local(id) => {
-                                    Some(tcx.hir().enclosing_body_owner(id).to_def_id())
-                                },
-                                _ => panic!(),
-                            }
-                        }
-                    }
-                }
+                QPath::Resolved(_, path) => path.res.opt_def_id(),
                 QPath::TypeRelative(_, segment) => segment.res.opt_def_id(),
                 // TODO this should be unreachable
                 _ => None,
@@ -460,7 +453,24 @@ fn from_callers_to_called_def_id<'tcx>(tcx: &mut TyCtxt<'tcx>, expr: Expr<'tcx>)
         },
         ExprKind::MethodCall(_,function,_,_) => match function.kind {
             ExprKind::Path(path) => match path {
-                QPath::Resolved(_, path) => path.res.opt_def_id(),
+                QPath::Resolved(_, path) => {
+                    match path.res.opt_def_id() {
+                        Some(def_id) => Some(def_id),
+                        None => {
+                            match path.res {
+                                Res::Local(id) => {
+                                    let result = tcx.typeck(function.hir_id.owner.def_id);
+                                    let ty = result.expr_ty(function);
+                                    let def_id = result
+                                        .type_dependent_def_id(expr.hir_id)
+                                        .expect("ERROR: Can not get def id");
+                                    Some(def_id)
+                                },
+                                _ => panic!(),
+                            }
+                        }
+                    }
+                }
                 QPath::TypeRelative(_, segment) => segment.res.opt_def_id(),
                 _ => panic!(),
             },
