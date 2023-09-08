@@ -1,7 +1,7 @@
 //! use rustc_interface::run_compiler to check the hir of the target crate and the dependency if
 //! there is any forbidden panic. If there is it will report it.
 use rustc_hir::def_id::DefId;
-use rustc_hir::{Block, BodyId, ExprKind, HirId};
+use rustc_hir::{Block, BodyId, ExprKind, HirId,Node};
 use rustc_interface::Config;
 use rustc_middle::ty::AssocItem;
 use rustc_middle::ty::Ty;
@@ -94,7 +94,6 @@ impl HirTraverser {
         self.dep_map
             .insert("SELF".to_string(), (None, self.target_args.clone()));
         while !self.function_to_check.keys().is_empty() {
-            dbg!("PRIMO CICLO");
             for crate_ in self.function_to_check.keys() {
                 let to_check = self
                     .function_to_check
@@ -151,7 +150,6 @@ impl HirTraverser {
         target_config: Config,
         function_to_check: Option<Vec<(DefId, Vec<String>, Option<DefId>)>>,
     ) {
-        dbg!("SECONDO CICLO");
         rustc_interface::run_compiler(target_config, |compiler| {
             compiler.enter(|queries| {
                 queries
@@ -197,9 +195,8 @@ impl HirTraverser {
                                 first_level_calls: Vec::new(),
                             };
                             for block in &elem.1 .0 {
-                                traverser.traverse_block(block, &mut call_stack);
+                                traverser.traverse_node(tcx.hir().find(block.hir_id).unwrap(), &mut call_stack);
                             }
-                            dbg!("BLOCCHI ATTAVERSATI");
                             for (_, (def_id, fn_ident, call_stack)) in traverser
                                 .visited_functions
                                 .iter()
@@ -214,7 +211,6 @@ impl HirTraverser {
                                     &mut self.to_log,
                                 );
                             }
-                            dbg!("PANIC ATTAVERSATI");
                             for (_, (def_id, receiver, call_stack)) in traverser
                                 .visited_assoc_functions
                                 .iter()
@@ -248,6 +244,7 @@ impl HirTraverser {
                                 all_fn,
                                 self.deny_panic_procedural_parameters.clone(),
                             );
+                            dbg!("CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC");
                             let args_to_check = function_collectors::callers_into_args(callers);
                             for (arg, to_log, def_id) in args_to_check.iter() {
                                 let arg = function_collectors::solve_arg(
@@ -266,7 +263,7 @@ impl HirTraverser {
                                     first_level_calls: Vec::new(),
                                 };
                                 let mut call_stack = vec![to_log.clone()];
-                                traverser.traverse_expr(&arg, &mut call_stack);
+                                traverser.traverse_node(tcx.hir().find(arg.hir_id).unwrap(), &mut vec![]);
                                 for (_, (def_id, fn_ident, call_stack)) in traverser
                                     .visited_functions
                                     .iter()
@@ -301,7 +298,6 @@ impl HirTraverser {
         }
         // And finally check all the non local calls
         while !self.function_to_check.keys().is_empty() {
-            dbg!("ULTIMO CICLO");
             for crate_ in self.function_to_check.keys() {
                 let to_check = self
                     .function_to_check

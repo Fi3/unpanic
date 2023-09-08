@@ -119,7 +119,9 @@ pub fn get_callers<'tcx>(
     for block in callers {
         let to_log = format!("{:?} in {:?}", block.hir_id.owner, block.span);
         let mut traverser = FunctionCallPartialTree::new(*tcx, false);
-        traverser.traverse_block(&block, &mut vec![]);
+        dbg!("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
+        traverser.traverse_node(tcx.hir().find(block.hir_id).unwrap(), &mut vec![]);
+        dbg!("BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB");
         for call in traverser.first_level_calls {
             if let Some(def_id) = from_callers_to_called_def_id(tcx,call) {
                 if called.contains_key(&def_id.index) {
@@ -277,7 +279,7 @@ pub fn get_deny_panic_in_expr<'tcx>(expr: &Expr<'tcx>, blocks: &mut Vec<&Block<'
 // If it is a trait it does the same TODO verify it and if is the right thing todo
 pub fn get_procedural_parameters<'tcx>(
     tcx: &mut TyCtxt<'tcx>,
-    deny_panic_fn_bodies: &Vec<(BodyId, (Vec<&Block<'tcx>>, Vec<String>))>,
+    deny_panic_fn_bodies: &Vec<(BodyId, (Vec<&'tcx Block<'tcx>>, Vec<String>))>,
 ) -> 
 HashMap<
     /* id of the function with procedural parameters or trait */ DefId,
@@ -360,7 +362,7 @@ pub fn solve_arg<'tcx>(tcx: &mut TyCtxt<'tcx>, arg: Expr<'tcx>, method: DefId) -
     }
 }
 
-fn get_call_in_block<'tcx>(block: &Block<'tcx>, tcx: &mut TyCtxt<'tcx>) -> Vec<Expr<'tcx>> {
+fn get_call_in_block<'tcx>(block: &'tcx Block<'tcx>, tcx: &mut TyCtxt<'tcx>) -> Vec<Expr<'tcx>> {
     let mut traverser = FunctionCallPartialTree {
         tcx: *tcx,
         visited_functions: HashMap::new(),
@@ -370,7 +372,7 @@ fn get_call_in_block<'tcx>(block: &Block<'tcx>, tcx: &mut TyCtxt<'tcx>) -> Vec<E
         save_stack: false,
         first_level_calls: Vec::new(),
     };
-    traverser.traverse_block(block, &mut Vec::new());
+    traverser.traverse_node(Node::Block(block), &mut Vec::new());
     traverser.first_level_calls
 }
 
