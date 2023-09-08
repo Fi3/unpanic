@@ -114,7 +114,31 @@ impl HirTraverser {
                 };
             }
         }
-        self.complete_deny_panic_procedural_parameters_map();
+        // Make sure to check all the crates
+        let mut not_checked_crates = vec![];
+        for crate_name in self.dep_map.keys() {
+            if !self.vistited_crates.contains(crate_name) {
+                not_checked_crates.push(crate_name.clone());
+            }
+        }
+        for crate_name in not_checked_crates {
+            let (_, dep_args) = self
+                .dep_map
+                .get_mut(&crate_name)
+                .expect("ERROR: No crate in deps map");
+            match crate_name.as_str() {
+                "std" | "alloc" | "core" => (),
+                _ => {
+                    let (_, dep_args) = self
+                        .dep_map
+                        .get_mut(&crate_name)
+                        .expect("ERROR: No crate in deps map");
+                    let target_config = config_from_args(dep_args, &self.sysroot);
+                    self.vistited_crates.insert(crate_name.to_string());
+                    self.check_crate(target_config, None);
+                }
+            };
+        }
         self.second_pass();
     }
 
@@ -154,7 +178,7 @@ impl HirTraverser {
                             None => {
                                 let ret = get_functions(&mut tcx);
                                 let procedural_parameters =
-                                    dbg!(get_procedural_parameters(&mut tcx, &ret));
+                                    get_procedural_parameters(&mut tcx, &ret);
                                 self.deny_panic_procedural_parameters
                                     .extend(procedural_parameters);
                                 ret
@@ -208,36 +232,6 @@ impl HirTraverser {
         });
     }
 
-    fn complete_deny_panic_procedural_parameters_map(&mut self) {
-        let mut not_checked_crates = vec![];
-        for crate_name in self.dep_map.keys() {
-            if !self.vistited_crates.contains(crate_name) {
-                not_checked_crates.push(crate_name.clone());
-            }
-        }
-        for crate_name in not_checked_crates {
-            let (_, dep_args) = self
-                .dep_map
-                .get_mut(&crate_name)
-                .expect("ERROR: No crate in deps map");
-            let target_config = config_from_args(dep_args, &self.sysroot);
-            rustc_interface::run_compiler(target_config, |compiler| {
-                compiler.enter(|queries| {
-                    queries
-                        .global_ctxt()
-                        .expect("ERROR: Can not get global context")
-                        .enter(|mut tcx| {
-                            let deny_panic_functions = get_functions(&mut tcx);
-                            let procedural_parameters =
-                                get_procedural_parameters(&mut tcx, &deny_panic_functions);
-                            self.deny_panic_procedural_parameters
-                                .extend(procedural_parameters);
-                        });
-                });
-            });
-        }
-    }
-
     fn second_pass(&mut self) {
         for (k, (_, dep_args)) in self.dep_map.clone().iter() {
             dbg!(k);
@@ -254,13 +248,13 @@ impl HirTraverser {
                                 all_fn,
                                 self.deny_panic_procedural_parameters.clone(),
                             );
-                            let args_to_check = dbg!(function_collectors::callers_into_args(callers));
+                            let args_to_check = function_collectors::callers_into_args(callers);
                             for (arg, to_log, def_id) in args_to_check.iter() {
-                                let arg = dbg!(function_collectors::solve_arg(
+                                let arg = function_collectors::solve_arg(
                                     &mut tcx,
                                     arg.clone(),
                                     def_id.clone(),
-                                ));
+                                );
                                 self.visited_functions = vec![];
                                 let mut traverser = FunctionCallPartialTree {
                                     tcx,
@@ -273,8 +267,6 @@ impl HirTraverser {
                                 };
                                 let mut call_stack = vec![to_log.clone()];
                                 traverser.traverse_expr(&arg, &mut call_stack);
-                                dbg!(&traverser.visited_functions);
-                                dbg!(&traverser.visited_assoc_functions);
                                 for (_, (def_id, fn_ident, call_stack)) in traverser
                                     .visited_functions
                                     .iter()
@@ -307,7 +299,6 @@ impl HirTraverser {
                 });
             });
         }
-        dbg!(&self.function_to_check);
         // And finally check all the non local calls
         while !self.function_to_check.keys().is_empty() {
             dbg!("ULTIMO CICLO");

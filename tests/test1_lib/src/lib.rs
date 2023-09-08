@@ -1,4 +1,4 @@
-#![no_std]
+//#![no_std]
 
 pub mod allow_panic_test;
 /// Library used by test1_bin

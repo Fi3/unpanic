@@ -163,6 +163,18 @@ pub fn get_edition(args: &[String]) -> Edition {
             "2021" => Edition::Edition2021,
             _ => panic!("Unsupported edition {}", edition[0].as_str()),
         },
+        2 => {
+                if edition[0] == edition[1] {
+                    match edition[0].as_str() {
+                        "2015" => Edition::Edition2015,
+                        "2018" => Edition::Edition2018,
+                        "2021" => Edition::Edition2021,
+                        _ => panic!("Unsupported edition {}", edition[0].as_str()),
+                    }
+                } else {
+                    panic!("Can not use more then one edition {:#?}", args);
+                }
+        },
         _ => panic!("Can not use more then one edition {:#?}", args),
     }
 }

@@ -183,15 +183,17 @@ impl<'tcx> FunctionCallPartialTree<'tcx> {
                 {
                     let result = self.tcx.typeck(receiver.hir_id.owner.def_id);
                     let ty = result.expr_ty(receiver);
-                    let def_id = result
-                        .type_dependent_def_id(expr_.hir_id)
-                        .expect("ERROR: Can not get def id");
+                    let def_id = match result
+                        .type_dependent_def_id(expr_.hir_id) {
+                            Some(id) => id,
+                            None => return,
+                    };
                     if ! def_id.is_local() {
                         match ty.kind() {
                             rustc_middle::ty::Adt(adt_def, _) => {
                                 Self::add_to_stack(span,call_stack);
                                 // Check if it is a trait method
-                                if let Some(impl_item) = dbg!(super::get_impl_item(&mut self.tcx,def_id.clone(),Some(ty))) {
+                                if let Some(impl_item) = super::get_impl_item(&mut self.tcx,def_id.clone(),Some(ty)) {
                                     if let Some(local_id) = impl_item.def_id.as_local() {
                                         match hir_krate.get_by_def_id(local_id) {
                                             // TraitItem are handled elsewhere TODO
